@@ -1,0 +1,533 @@
+---
+title: "Indonesia Inequality Project: Initial EDA"
+format:
+  html:
+    toc: true
+    code-fold: false
+execute:
+  warning: false
+  message: false
+---
+
+This Quarto notebook mirrors `eda_indonesia_inequality.ipynb` using the tidyverse paradigm, `%>%` pipes, and `ggplot2`.
+
+Scope for this notebook:
+
+- inspect processed CSV coverage
+- visualize available World Bank-backed fields
+- make BPS-related gaps visible
+- avoid modeling, regressions, causal claims, or final narrative conclusions
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(purrr)
+library(readr)
+library(scales)
+library(stringr)
+library(tibble)
+library(tidyr)
+
+project_root <- if (basename(getwd()) == "notebooks") dirname(getwd()) else getwd()
+data_dir <- file.path(project_root, "data", "processed")
+
+palette <- c(
+  blue = "#2F6B9A",
+  red = "#C44E52",
+  green = "#4C956C",
+  gold = "#D4A017",
+  purple = "#7D5BA6",
+  gray = "#6C757D",
+  light = "#F6F7F9",
+  dark = "#1F2933"
+)
+
+chart_theme <- function() {
+  theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14, color = palette[["dark"]]),
+      plot.subtitle = element_text(size = 10, color = palette[["gray"]]),
+      axis.title = element_text(size = 10, color = palette[["dark"]]),
+      axis.text = element_text(size = 9, color = palette[["dark"]]),
+      legend.title = element_text(size = 9, face = "bold"),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+}
+
+read_processed_csv <- function(filename) {
+  read_csv(file.path(data_dir, filename), show_col_types = FALSE) %>%
+    rename_with(str_trim)
+}
+```
+
+## Load Processed Data
+
+Each CSV is loaded from `data/processed`. The pipeline currently gives annual rows for 2000-2024 after Phase 1 is run locally. Some cells are intentionally blank where BPS-specific sources are not yet available.
+
+```{r load-data}
+files <- c(
+  gdp = "gdp_indonesia.csv",
+  inflation = "inflation_indonesia.csv",
+  inequality = "inequality_indonesia.csv",
+  poverty = "poverty_indonesia.csv",
+  labor = "labor_indonesia.csv",
+  cost_of_living = "cost_of_living_indonesia.csv"
+)
+
+data <- files %>%
+  imap(~ read_processed_csv(.x)) %>%
+  set_names(names(files))
+
+data %>%
+  imap_dfr(~ tibble(
+    dataset = .y,
+    rows = nrow(.x),
+    first_year = min(.x$year, na.rm = TRUE),
+    last_year = max(.x$year, na.rm = TRUE),
+    columns = ncol(.x)
+  ))
+```
+
+## Data Coverage
+
+This view checks which dataset-year combinations contain any non-source values beyond `year`. It is a quick QA step before looking at individual indicators.
+
+```{r data-coverage, fig.width=10, fig.height=5.5}
+coverage <- data %>%
+  imap_dfr(function(df, dataset_name) {
+    value_cols <- df %>%
+      select(-any_of(c("year", "source"))) %>%
+      names()
+
+    df %>%
+      rowwise() %>%
+      mutate(
+        dataset = dataset_name,
+        available_fields = sum(!is.na(c_across(all_of(value_cols)))),
+        total_fields = length(value_cols),
+        coverage_rate = if_else(total_fields > 0, available_fields / total_fields, 0)
+      ) %>%
+      ungroup() %>%
+      select(dataset, year, available_fields, total_fields, coverage_rate)
+  })
+
+coverage %>%
+  ggplot(aes(year, dataset, fill = coverage_rate)) +
+  geom_tile(color = "white", linewidth = 0.25) +
+  scale_fill_gradient(low = "#F1F3F5", high = palette[["blue"]], labels = percent_format()) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Processed Data Coverage by Dataset and Year",
+    subtitle = "Darker cells have more populated fields in the standardized CSV schema",
+    x = "Year", y = NULL, fill = "Coverage"
+  ) +
+  chart_theme()
+```
+
+## Field Availability
+
+Instead of plotting every column name, this section groups fields into three plain statuses:
+
+- **Complete**: every year has a value
+- **Partly missing**: some years have values, some years are blank
+- **Empty**: no years have values yet
+
+The empty fields are mostly BPS-dependent fields. They are present in the schema so the pipeline has a stable destination once BPS/API/manual sources are added.
+
+```{r field-availability-table}
+availability <- data %>%
+  imap_dfr(function(df, dataset_name) {
+    df %>%
+      select(-any_of(c("year", "source"))) %>%
+      summarise(across(everything(), ~ sum(!is.na(.x)))) %>%
+      pivot_longer(everything(), names_to = "field", values_to = "non_missing_count") %>%
+      mutate(
+        dataset = dataset_name,
+        total_rows = nrow(df),
+        status = case_when(
+          non_missing_count == 0 ~ "Empty",
+          non_missing_count == total_rows ~ "Complete",
+          TRUE ~ "Partly missing"
+        )
+      )
+  }) %>%
+  mutate(status = factor(status, levels = c("Complete", "Partly missing", "Empty")))
+
+availability %>%
+  arrange(dataset, status, field)
+```
+
+```{r field-availability-chart, fig.width=10, fig.height=5.5}
+availability %>%
+  count(dataset, status, name = "field_count") %>%
+  ggplot(aes(dataset, field_count, fill = status)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(values = c(
+    Complete = palette[["green"]],
+    `Partly missing` = palette[["gold"]],
+    Empty = palette[["red"]]
+  )) +
+  labs(
+    title = "Field Availability by Dataset",
+    subtitle = "Empty fields are mostly waiting for BPS source mapping or API recovery",
+    x = NULL, y = "Number of fields", fill = "Status"
+  ) +
+  chart_theme() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+### Empty Fields to Source Later
+
+These are the fields that currently have no values in any year. They are not analysis-ready yet.
+
+```{r empty-fields}
+availability %>%
+  filter(status == "Empty") %>%
+  select(dataset, field) %>%
+  arrange(dataset, field)
+```
+
+## GDP and Per-Capita Output
+
+These charts inspect the available GDP growth and per-capita output fields. This is descriptive only.
+
+```{r gdp-per-capita, fig.width=10, fig.height=5.5}
+gdp_long <- data$gdp %>%
+  select(year, real_gdp_per_capita, nominal_gdp_per_capita) %>%
+  pivot_longer(
+    cols = c(real_gdp_per_capita, nominal_gdp_per_capita),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  drop_na(value) %>%
+  mutate(metric = recode(
+    metric,
+    real_gdp_per_capita = "Real GDP per capita",
+    nominal_gdp_per_capita = "Nominal GDP per capita"
+  ))
+
+gdp_long %>%
+  ggplot(aes(year, value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  scale_color_manual(values = c(palette[["blue"]], palette[["gold"]])) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "GDP per Capita Series",
+    subtitle = "World Bank API, Indonesia",
+    x = "Year", y = "US dollars", color = "Metric"
+  ) +
+  chart_theme()
+```
+
+```{r gdp-growth, fig.width=10, fig.height=5.5}
+data$gdp %>%
+  drop_na(gdp_growth) %>%
+  ggplot(aes(year, gdp_growth)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = palette[["gray"]]) +
+  geom_line(color = palette[["blue"]], linewidth = 1.1) +
+  geom_point(color = palette[["blue"]], size = 1.8) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "GDP Growth, Year over Year",
+    subtitle = "World Bank API, annual percent",
+    x = "Year", y = "GDP growth (%)"
+  ) +
+  chart_theme()
+```
+
+## Inflation and CPI
+
+The total CPI and annual inflation fields are available from World Bank. Category CPI fields are present in the schema but remain blank until BPS source tables are mapped.
+
+```{r inflation-cpi, fig.width=10, fig.height=5.5}
+inflation_long <- data$inflation %>%
+  select(year, cpi_total, inflation_yoy) %>%
+  pivot_longer(
+    cols = c(cpi_total, inflation_yoy),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  drop_na(value) %>%
+  mutate(metric = recode(
+    metric,
+    cpi_total = "CPI total index",
+    inflation_yoy = "Inflation YoY (%)"
+  ))
+
+inflation_long %>%
+  ggplot(aes(year, value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  facet_wrap(~ metric, scales = "free_y", ncol = 1) +
+  scale_color_manual(values = c(palette[["blue"]], palette[["red"]])) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Inflation and CPI Coverage Available Now",
+    subtitle = "Category CPI fields require BPS follow-up",
+    x = "Year", y = NULL, color = "Metric"
+  ) +
+  chart_theme()
+```
+
+## Inequality and Distribution Shares
+
+The pipeline currently uses World Bank Gini, decile, and quintile distribution indicators. The distribution fields are treated as provisional for expenditure analysis because World Bank metadata may describe them as income or consumption shares depending on survey source.
+
+The broad bottom 40% / middle 40% / top 20% view is useful, but it can hide tail behavior. The added bottom 10% and top 10% view checks whether distribution changes are more extreme at the ends.
+
+```{r distribution-shares, fig.width=10, fig.height=5.5}
+ineq_long <- data$inequality %>%
+  select(year, expenditure_bottom40, expenditure_middle40, expenditure_top20) %>%
+  pivot_longer(
+    cols = c(expenditure_bottom40, expenditure_middle40, expenditure_top20),
+    names_to = "group",
+    values_to = "share"
+  ) %>%
+  drop_na(share) %>%
+  mutate(group = recode(
+    group,
+    expenditure_bottom40 = "Bottom 40%",
+    expenditure_middle40 = "Middle 40%",
+    expenditure_top20 = "Top 20%"
+  ))
+
+ineq_change_labels <- ineq_long %>%
+  group_by(group) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(first_share = first(share)) %>%
+  slice_tail(n = 1) %>%
+  ungroup() %>%
+  mutate(
+    change_pp = share - first_share,
+    change_label = sprintf("%+.1f pp", change_pp)
+  )
+
+ineq_long %>%
+  ggplot(aes(year, share, color = group)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  geom_text(
+    data = ineq_change_labels,
+    aes(label = change_label),
+    nudge_x = 0.7,
+    hjust = 0,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(values = c(palette[["green"]], palette[["blue"]], palette[["red"]])) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title = "Distribution Shares by Population Group",
+    subtitle = "End labels show percentage-point change from first available year to final year",
+    x = "Year", y = "Share (%)", color = "Group"
+  ) +
+  chart_theme() +
+  theme(plot.margin = margin(5.5, 70, 5.5, 5.5))
+```
+
+### Tail Distribution Shares
+
+This view compares the bottom 10% and top 10% shares directly. The top 10% series is plotted against the right axis so the opposite movement between the two tails is easier to read.
+
+```{r tail-distribution-shares, fig.width=10, fig.height=5.5}
+tail <- data$inequality %>%
+  select(year, distribution_bottom10, distribution_top10) %>%
+  drop_na()
+
+bottom_range <- range(tail$distribution_bottom10, na.rm = TRUE)
+top_range <- range(tail$distribution_top10, na.rm = TRUE)
+
+top_to_bottom <- function(x) {
+  (x - top_range[1]) / diff(top_range) * diff(bottom_range) + bottom_range[1]
+}
+
+bottom_to_top <- function(x) {
+  (x - bottom_range[1]) / diff(bottom_range) * diff(top_range) + top_range[1]
+}
+
+tail %>%
+  mutate(distribution_top10_scaled = top_to_bottom(distribution_top10)) %>%
+  ggplot(aes(year)) +
+  geom_line(aes(y = distribution_bottom10, color = "Bottom 10%"), linewidth = 1.1) +
+  geom_point(aes(y = distribution_bottom10, color = "Bottom 10%"), size = 1.8) +
+  geom_line(aes(y = distribution_top10_scaled, color = "Top 10%"), linewidth = 1.1) +
+  geom_point(aes(y = distribution_top10_scaled, color = "Top 10%"), size = 1.8) +
+  scale_color_manual(values = c(
+    "Bottom 10%" = palette[["green"]],
+    "Top 10%" = palette[["red"]]
+  )) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  scale_y_continuous(
+    name = "Bottom 10% share (%)",
+    sec.axis = sec_axis(~ bottom_to_top(.), name = "Top 10% share (%)")
+  ) +
+  labs(
+    title = "Tail Distribution Shares",
+    subtitle = "Top 10% uses the right axis; World Bank decile basis depends on survey metadata",
+    x = "Year", color = "Group"
+  ) +
+  chart_theme() +
+  theme(
+    axis.title.y.left = element_text(color = palette[["green"]]),
+    axis.text.y.left = element_text(color = palette[["green"]]),
+    axis.title.y.right = element_text(color = palette[["red"]]),
+    axis.text.y.right = element_text(color = palette[["red"]])
+  )
+```
+
+```{r gini-index, fig.width=10, fig.height=5.5}
+data$inequality %>%
+  drop_na(gini_ratio) %>%
+  ggplot(aes(year, gini_ratio)) +
+  geom_line(color = palette[["purple"]], linewidth = 1.1) +
+  geom_point(color = palette[["purple"]], size = 1.8) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Gini Index",
+    subtitle = "World Bank API, Indonesia",
+    x = "Year", y = "Gini index"
+  ) +
+  chart_theme()
+```
+
+## Poverty
+
+Poverty fields are annual World Bank indicators: national poverty line headcount and international extreme poverty headcount.
+
+```{r poverty-indicators, fig.width=10, fig.height=5.5}
+poverty_long <- data$poverty %>%
+  select(year, poverty_rate, extreme_poverty_rate) %>%
+  pivot_longer(
+    cols = c(poverty_rate, extreme_poverty_rate),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  drop_na(value) %>%
+  mutate(metric = recode(
+    metric,
+    poverty_rate = "National poverty rate",
+    extreme_poverty_rate = "Extreme poverty rate"
+  ))
+
+poverty_long %>%
+  ggplot(aes(year, value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  scale_color_manual(values = c(palette[["blue"]], palette[["red"]])) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Poverty Indicators",
+    subtitle = "World Bank API, annual percent of population",
+    x = "Year", y = "Population share (%)", color = "Metric"
+  ) +
+  chart_theme()
+```
+
+## Labor Market
+
+The available labor fields cover total unemployment, youth unemployment, and vulnerable employment. Wage and informal employment fields remain BPS/ILOSTAT follow-up items.
+
+```{r labor-market, fig.width=10, fig.height=5.5}
+labor_long <- data$labor %>%
+  select(year, unemployment_rate, youth_unemployment, vulnerable_employment_share) %>%
+  pivot_longer(
+    cols = c(unemployment_rate, youth_unemployment, vulnerable_employment_share),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  drop_na(value) %>%
+  mutate(metric = recode(
+    metric,
+    unemployment_rate = "Unemployment",
+    youth_unemployment = "Youth unemployment",
+    vulnerable_employment_share = "Vulnerable employment"
+  ))
+
+labor_long %>%
+  ggplot(aes(year, value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  facet_wrap(~ metric, scales = "free_y", ncol = 1) +
+  scale_color_manual(values = c(palette[["blue"]], palette[["red"]], palette[["green"]])) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Labor Market Indicators Available Now",
+    subtitle = "Wages and informal employment are not yet sourced",
+    x = "Year", y = "Share (%)", color = "Metric"
+  ) +
+  chart_theme()
+```
+
+## Cost of Living Placeholder
+
+The cost-of-living schema exists, but only total CPI is currently populated. This chart is mostly a reminder that this dataset needs BPS commodity/category sources before substantive EDA.
+
+```{r cost-of-living-missingness, fig.width=10, fig.height=5.5}
+data$cost_of_living %>%
+  select(-any_of(c("year", "source"))) %>%
+  summarise(across(everything(), ~ mean(is.na(.x)))) %>%
+  pivot_longer(everything(), names_to = "field", values_to = "missing_rate") %>%
+  ggplot(aes(missing_rate, field)) +
+  geom_col(fill = palette[["gold"]]) +
+  scale_x_continuous(labels = percent_format()) +
+  labs(
+    title = "Cost-of-Living Field Missingness",
+    subtitle = "Only total CPI is populated in the current ingestion pass",
+    x = "Share of rows missing", y = NULL
+  ) +
+  chart_theme()
+```
+
+## Starter Combined Dataset
+
+This final section creates a wide analytical table by joining all currently available annual fields. It is useful for future EDA, but should not be interpreted as a finalized analysis dataset until BPS gaps are addressed.
+
+```{r combined-dataset}
+combined <- data$gdp %>%
+  select(-source)
+
+for (name in c("inflation", "inequality", "poverty", "labor", "cost_of_living")) {
+  df <- data[[name]] %>%
+    select(-source)
+
+  duplicate_cols <- intersect(names(df), names(combined)) %>%
+    setdiff("year")
+
+  df <- df %>%
+    select(-any_of(duplicate_cols))
+
+  combined <- combined %>%
+    full_join(df, by = "year")
+}
+
+combined <- combined %>%
+  arrange(year)
+
+combined %>%
+  head()
+```
+
+```{r combined-summary}
+combined %>%
+  summarise(across(everything(), list(
+    count = ~ sum(!is.na(.x)),
+    mean = ~ mean(.x, na.rm = TRUE),
+    sd = ~ sd(.x, na.rm = TRUE),
+    min = ~ min(.x, na.rm = TRUE),
+    max = ~ max(.x, na.rm = TRUE)
+  ))) %>%
+  pivot_longer(
+    everything(),
+    names_to = c("field", ".value"),
+    names_pattern = "(.+)_(count|mean|sd|min|max)$"
+  )
+```
+
+## Next EDA Tasks After BPS Is Available
+
+- Add category CPI charts once BPS CPI table IDs are mapped.
+- Add rice/fuel/electricity/LPG/rent price charts once official annual sources are ingested.
+- Replace provisional distribution shares with BPS/SUSENAS expenditure-only distribution if available.
+- Add wage and informal employment charts once BPS or ILOSTAT source series are confirmed.

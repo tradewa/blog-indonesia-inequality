@@ -1,126 +1,89 @@
 # Agent Handoff Notes
 
-## Part 1: Data Downloading and Ingestion
+## Purpose
 
-Status: completed as a reproducible first pass.
+This file is internal continuation context for future development. It should not duplicate the full README. The README is the replication guide and data dictionary; keep it self-sufficient for a human starting from a fresh clone.
 
-The first part of the project is a data ingestion pipeline only. It identifies official/public sources, downloads raw API responses, minimally standardizes annual data, and writes local processed CSVs. It does not perform modeling, interpretation, dashboards, or essay generation.
+## Current State
 
-## Current Source Strategy
+The project is now organized into three phases:
 
-World Bank API is the working source for the baseline pipeline because it provides stable country-level annual indicators for Indonesia (`IDN`) and does not require an API key.
+- Phase 1: data ingestion
+- Phase 2: exploratory data analysis
+- Phase 3: analysis report
 
-BPS is the preferred source for more Indonesia-specific fields, especially category CPI, commodity prices, wages, informal employment, and SUSENAS expenditure distribution. However, the BPS Web API was returning a server-side failure during this setup, so BPS-backed fields are intentionally left blank instead of being fabricated or manually copied without a reproducible source.
+Current phase status:
 
-## How to Rebuild the Downloaded Data
+- Phase 1 is complete as a reproducible first pass.
+- Phase 2 is complete as an initial EDA notebook.
+- Phase 3 is complete as a first markdown report draft for user review.
 
-Run all current download scripts:
+Implemented:
+
+- World Bank-backed download scripts for GDP, inflation, inequality, poverty, labor, and cost-of-living baseline data.
+- Raw API response persistence under `data/raw/`, ignored by git.
+- Standardized annual processed CSVs under `data/processed/`, ignored by git.
+- A BPS dynamic-table discovery script that records failure output when the BPS API does not return usable metadata.
+- Phase 2 EDA notebook at `notebooks/eda_indonesia_inequality.ipynb`.
+- Phase 2 R/Quarto equivalent at `notebooks/eda_indonesia_inequality.qmd`.
+- Phase 3 analysis report at `reports/indonesia_inequality_eda_report.md` with chart images under `reports/figures/`.
+- Project-local R package management through `renv`.
+
+Not implemented:
+
+- Final statistical modeling.
+- Dashboarding or publication narrative.
+- BPS-backed fills for category CPI, commodity/administered prices, wages, informal employment, or SUSENAS-specific distribution fields.
+- Output validation checks.
+
+## Operating Rule
+
+Do not fabricate or hand-copy blank BPS-backed fields into processed CSVs. If a field is filled, the raw source must be saved under `data/raw/` and the transformation into `data/processed/` must be reproducible from code.
+
+Generated data files should stay out of git. Keep `data/raw/.gitkeep` and `data/processed/.gitkeep` only; users should rebuild raw JSON and processed CSV outputs locally.
+
+## Replication
+
+Use `README.md` for the authoritative fresh-clone instructions, source strategy, processed schemas, and known gaps.
+
+The current rebuild entry points are:
 
 ```bash
 .venv/bin/python scripts/download_all.py
-```
-
-Run BPS source discovery separately:
-
-```bash
 .venv/bin/python scripts/discover_bps_sources.py
 ```
 
-The scripts write raw responses to:
+The scripts currently use Python standard-library modules only.
 
-```text
-data/raw/
+For R/Quarto work, restore the local R environment before rendering:
+
+```bash
+Rscript -e "renv::restore()"
+quarto render notebooks/eda_indonesia_inequality.qmd
 ```
 
-The scripts write standardized CSVs to:
+## Phase Boundaries
 
-```text
-data/processed/
-```
+Phase 1 should stay focused on reproducible ingestion. Do not add interpretation or article text to the ingestion scripts.
 
-## Generated Processed Files
+Phase 2 should stay focused on EDA and QA: coverage checks, missingness, descriptive plots, and combined tables. Keep the `.ipynb` and `.qmd` conceptually aligned when changing analysis logic.
 
-- `data/processed/gdp_indonesia.csv`
-- `data/processed/inflation_indonesia.csv`
-- `data/processed/inequality_indonesia.csv`
-- `data/processed/poverty_indonesia.csv`
-- `data/processed/labor_indonesia.csv`
-- `data/processed/cost_of_living_indonesia.csv`
+Phase 3 is where written analysis belongs. Keep the report clearly provisional until missing BPS/SUSENAS, wage, and cost-of-living sources are filled.
 
-Each processed file currently contains annual rows from 2000 through 2024. The project intentionally excludes 2025 for now to avoid treating not-yet-published values as missing data.
+## Key Caveats
 
-## World Bank Indicators Used
+- World Bank is the current baseline source because it provides stable annual Indonesia (`IDN`) indicators without an API key.
+- BPS remains the preferred future source for category CPI, commodity prices, administered prices, wages, informal employment, and SUSENAS/BPS expenditure distribution.
+- The current BPS discovery failure is recorded at `data/raw/bps_dynamic_tables_page1_error.json`.
+- `inequality_indonesia.csv` now includes bottom/top decile shares plus grouped bottom 40%, middle 40%, and top 20% shares. All distribution shares may be based on income or consumption depending on survey metadata.
+- `vulnerable_employment_share` is related to informal employment but is not a direct substitute.
 
-GDP:
+## Next Work
 
-- `NY.GDP.MKTP.KD.ZG`: GDP growth, annual %
-- `NY.GDP.PCAP.KD`: GDP per capita, constant 2015 US$
-- `NY.GDP.PCAP.CD`: GDP per capita, current US$
+Highest-priority follow-ups:
 
-Inflation:
-
-- `FP.CPI.TOTL`: consumer price index
-- `FP.CPI.TOTL.ZG`: inflation, consumer prices, annual %
-
-Inequality:
-
-- `SI.POV.GINI`: Gini index
-- `SI.DST.FRST.20`: income or consumption share, lowest 20%
-- `SI.DST.02ND.20`: income or consumption share, second 20%
-- `SI.DST.03RD.20`: income or consumption share, third 20%
-- `SI.DST.04TH.20`: income or consumption share, fourth 20%
-- `SI.DST.05TH.20`: income or consumption share, highest 20%
-
-Poverty:
-
-- `SI.POV.NAHC`: poverty headcount ratio at national poverty lines
-- `SI.POV.DDAY`: poverty headcount ratio at $2.15/day, 2017 PPP
-
-Labor:
-
-- `SL.UEM.TOTL.ZS`: unemployment, total
-- `SL.UEM.1524.ZS`: unemployment, youth total ages 15-24
-- `SL.EMP.VULN.ZS`: vulnerable employment, total
-
-Cost of living:
-
-- `FP.CPI.TOTL`: current placeholder only for total CPI
-
-## BPS API Status
-
-The BPS Web API endpoint pattern used by the discovery script is:
-
-```text
-https://webapi.bps.go.id/v1/api/list/model/dynamictable/lang/ind/domain/0000/page/1/key/{BPS_API_KEY}
-```
-
-During the reproducible run, the BPS API did not return usable data. The exact error is saved at:
-
-```text
-data/raw/bps_dynamic_tables_page1_error.json
-```
-
-This means the current repository records the BPS problem as part of the data provenance. When BPS comes back online, rerun `scripts/discover_bps_sources.py` and use the returned table metadata to add BPS-specific download scripts.
-
-## Known Gaps for Part 1
-
-These fields still need BPS table IDs or another official API source:
-
-- CPI by category: food, transport, housing, education, healthcare, restaurants
-- rice and other food prices
-- fuel, electricity, and LPG prices or indexes
-- rent or housing cost index
-- average wage
-- real wage growth
-- informal employment share
-- expenditure distribution specifically from SUSENAS/BPS
-
-## Part 2 Starting Point
-
-The initial exploratory notebook is:
-
-```text
-notebooks/eda_indonesia_inequality.ipynb
-```
-
-It uses the processed CSVs currently available and explicitly visualizes missing fields caused by the BPS outage.
+- Add a lightweight `scripts/validate_outputs.py` that checks expected files, columns, years, and documented placeholder fields.
+- Confirm stable BPS table IDs for CPI categories and real-life cost indicators.
+- Add reproducible BPS download scripts once table IDs are known.
+- Confirm an official source for wages, real wage growth, and informal employment.
+- Replace World Bank distribution-share proxies with BPS/SUSENAS expenditure distribution if available.

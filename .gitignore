@@ -2,3 +2,22 @@
 .venv/
 __pycache__/
 .ipynb_checkpoints/
+.quarto/
+notebooks/.quarto/
+
+# Generated data artifacts. Rebuild locally with scripts/download_all.py.
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# renv local state and package libraries.
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
+.Rproj.user
+.positai
