@@ -1,0 +1,6 @@
+{
+  "error": "BPS API request failed",
+  "status": 500,
+  "reason": "Internal Server Error",
+  "url_without_key": "https://webapi.bps.go.id/v1/api/list/model/dynamictable/lang/ind/domain/0000/page/1/key/***"
+}

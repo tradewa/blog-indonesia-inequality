@@ -1,0 +1,26 @@
+year,rice_price,fuel_price,electricity_index,rent_index,education_index,healthcare_index,restaurant_index,cpi_total,source
+2000,,,,,,,,44.0160374374,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2001,,,,,,,,49.0779328256,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2002,,,,,,,,54.9182657419,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2003,,,,,,,,58.6292646125,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2004,,,,,,,,62.184579505,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2005,,,,,,,,68.6848580863,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2006,,,,,,,,77.6885301496,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2007,,,,,,,,82.6656931302,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2008,,,,,,,,91.1196377337,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2009,,,,,,,,95.1165214763,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2010,,,,,,,,100,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2011,,,,,,,,105.3560484911,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2012,,,,,,,,109.8647756198,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2013,,,,,,,,116.9098484006,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2014,,,,,,,,124.386149994,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2015,,,,,,,,132.3009907427,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2016,,,,,,,,136.9656650651,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2017,,,,,,,,142.182411367,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2018,,,,,,,,146.7298990507,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2019,,,,,,,,151.1766727887,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2020,,,,,,,,154.079015877,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2021,,,,,,,,156.4827699849,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2022,,,,,,,,163.0698568507,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2023,,,,,,,,169.0535202428,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping
+2024,,,,,,,,172.7414443178,World Bank API CPI total only; item/category indicators require BPS manual/API table mapping

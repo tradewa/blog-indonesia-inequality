@@ -1,0 +1,26 @@
+year,unemployment_rate,youth_unemployment,avg_wage,real_wage_growth,informal_employment_share,vulnerable_employment_share,source
+2000,6.077,19.147,,,,65.2215913975,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2001,6.082,19.035,,,,61.2868273427,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2002,6.604,21.434,,,,61.1319639233,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2003,6.657,21.436,,,,62.9116193649,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2004,7.303,23.617,,,,61.2540804455,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2005,7.945,26.302,,,,59.0840304698,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2006,7.551,24.616,,,,58.5840765476,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2007,8.06,22.861,,,,58.9807598305,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2008,7.208,19.644,,,,58.4621702982,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2009,6.106,19.106,,,,58.3681793495,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2010,5.614,17.691,,,,57.2529873177,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2011,5.153,18.393,,,,54.1008956471,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2012,4.468,15.673,,,,51.2865487749,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2013,4.336,15.977,,,,50.884911943,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2014,4.049,15.977,,,,50.4491195071,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2015,4.514,17.224,,,,48.2113835793,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2016,4.301,15.997,,,,48.3329217167,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2017,3.783,14.553,,,,48.4921518604,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2018,4.387,16.369,,,,49.1211021884,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2019,3.59,13.577,,,,49.1383036312,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2020,4.255,14.773,,,,50.3136526574,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2021,3.827,13.8,,,,49.9031597347,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2022,3.462,14.054,,,,50.2806596863,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2023,3.308,13.015,,,,50.6716413258,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
+2024,3.301,13.075,,,,50.3095599926,World Bank API; wage and informal employment columns require BPS/ILOSTAT follow-up
