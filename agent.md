@@ -16,31 +16,31 @@ Current phase status:
 
 - Phase 1 is complete as a reproducible first pass.
 - Phase 2 is complete as an initial EDA notebook.
-- Phase 3 is complete as a first markdown report draft for user review.
+- Phase 3 is currently skeleton-only. The full report will be written later.
 
 Implemented:
 
-- World Bank-backed download scripts for GDP, inflation, inequality, poverty, labor, and cost-of-living baseline data.
+- World Bank-backed download scripts for GDP, inflation, inequality, PIP welfare distribution, comparative inequality-growth, poverty, labor, and cost-of-living baseline data.
 - Raw API response persistence under `data/raw/`, ignored by git.
 - Standardized annual processed CSVs under `data/processed/`, ignored by git.
 - A BPS dynamic-table discovery script that records failure output when the BPS API does not return usable metadata.
 - Phase 2 EDA notebook at `notebooks/eda_indonesia_inequality.ipynb`.
 - Phase 2 R/Quarto equivalent at `notebooks/eda_indonesia_inequality.qmd`.
-- Phase 3 analysis report at `reports/indonesia_inequality_eda_report.md` with chart images under `reports/figures/`.
+- Phase 3 analysis skeleton at `reports/skeleton.md`.
 - Project-local R package management through `renv`.
 
 Not implemented:
 
 - Final statistical modeling.
 - Dashboarding or publication narrative.
-- BPS-backed fills for category CPI, commodity/administered prices, wages, informal employment, or SUSENAS-specific distribution fields.
+- BPS-backed fills for category CPI, commodity/administered prices, wages, informal employment, or SUSENAS-specific validation fields.
 - Output validation checks.
 
 ## Operating Rule
 
 Do not fabricate or hand-copy blank BPS-backed fields into processed CSVs. If a field is filled, the raw source must be saved under `data/raw/` and the transformation into `data/processed/` must be reproducible from code.
 
-Generated data files should stay out of git. Keep `data/raw/.gitkeep` and `data/processed/.gitkeep` only; users should rebuild raw JSON and processed CSV outputs locally.
+Generated data files should stay out of git. The whole `data/` directory is ignored; users should rebuild raw JSON/CSV and processed CSV outputs locally.
 
 ## Replication
 
@@ -68,14 +68,16 @@ Phase 1 should stay focused on reproducible ingestion. Do not add interpretation
 
 Phase 2 should stay focused on EDA and QA: coverage checks, missingness, descriptive plots, and combined tables. Keep the `.ipynb` and `.qmd` conceptually aligned when changing analysis logic.
 
-Phase 3 is where written analysis belongs. Keep the report clearly provisional until missing BPS/SUSENAS, wage, and cost-of-living sources are filled.
+Phase 3 is where written analysis belongs. Keep the current skeleton as the source of narrative structure until the user is ready to write the full report.
 
 ## Key Caveats
 
 - World Bank is the current baseline source because it provides stable annual Indonesia (`IDN`) indicators without an API key.
-- BPS remains the preferred future source for category CPI, commodity prices, administered prices, wages, informal employment, and SUSENAS/BPS expenditure distribution.
+- World Bank PIP percentile data now provides grouped absolute consumption estimates for Indonesia in 2017 PPP USD per person per day.
+- BPS remains the preferred future source for category CPI, commodity prices, administered prices, wages, informal employment, and validation of SUSENAS/BPS expenditure distribution.
 - The current BPS discovery failure is recorded at `data/raw/bps_dynamic_tables_page1_error.json`.
-- `inequality_indonesia.csv` now includes bottom/top decile shares plus grouped bottom 40%, middle 40%, and top 20% shares. All distribution shares may be based on income or consumption depending on survey metadata.
+- `inequality_indonesia.csv` now includes bottom/top decile shares plus grouped bottom 40%, middle 40%, and top 20% shares. `welfare_distribution_indonesia.csv` is preferred for group-level absolute welfare because it uses PIP percentile averages; current Indonesia rows use `consumption`.
+- `comparative_inequality_growth.csv` provides cross-country Gini observations with future 5-year and 10-year real GDP-per-capita growth. Use it as comparative evidence only, not Indonesia-only causal proof.
 - `vulnerable_employment_share` is related to informal employment but is not a direct substitute.
 
 ## Next Work
@@ -86,4 +88,4 @@ Highest-priority follow-ups:
 - Confirm stable BPS table IDs for CPI categories and real-life cost indicators.
 - Add reproducible BPS download scripts once table IDs are known.
 - Confirm an official source for wages, real wage growth, and informal employment.
-- Replace World Bank distribution-share proxies with BPS/SUSENAS expenditure distribution if available.
+- Validate World Bank PIP percentile aggregates against BPS/SUSENAS expenditure distribution if a stable source is found.

@@ -4,6 +4,7 @@ __pycache__/
 .ipynb_checkpoints/
 .quarto/
 notebooks/.quarto/
+agent.md
 
 # Generated data artifacts. Rebuild locally with scripts/download_all.py.
 data/

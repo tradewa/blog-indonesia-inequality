@@ -44,16 +44,15 @@ The `.qmd` version is the R/Quarto equivalent of the notebook. It uses tidyverse
 
 ### Phase 3: Analysis Report
 
-Status: completed as a first review draft.
+Status: skeleton only.
 
-Phase 3 turns the current EDA into a written markdown report with chart images. The report gives a provisional descriptive interpretation of the currently available data: strong GDP-per-capita growth and poverty reduction, alongside inequality indicators that remain above the early-2000s baseline.
+Phase 3 currently defines the analysis structure before writing the full report. The skeleton lays out the intended narrative: real GDP growth, group-level consumption gains, distribution-share shifts, tail inequality, and the normative question of whether rising inequality is acceptable when the poorest also improve.
 
 Primary outputs:
 
-- `reports/indonesia_inequality_eda_report.md`
-- `reports/figures/*.png`
+- `reports/skeleton.md`
 
-The Phase 3 report is review material, not a final publication. Its conclusions remain limited by missing BPS category CPI, cost-of-living, wage, informal-employment, and SUSENAS/BPS expenditure-distribution data.
+The full Phase 3 report and chart images are intentionally not kept in the repository yet. They should be generated later after the skeleton narrative is reviewed.
 
 ## Repository Structure
 
@@ -65,8 +64,7 @@ notebooks/
   eda_indonesia_inequality.ipynb
   eda_indonesia_inequality.qmd
 reports/
-  indonesia_inequality_eda_report.md
-  figures/                      Report chart images generated from notebook logic
+  skeleton.md                   Analysis structure for the future report
 scripts/
   common.py                    Shared fetch, clean, and CSV helpers
   download_all.py              Runs all World Bank-backed download scripts
@@ -74,6 +72,8 @@ scripts/
   download_gdp.py
   download_inflation.py
   download_inequality.py
+  download_welfare_distribution.py
+  download_comparative_growth_inequality.py
   download_labor.py
   download_poverty.py
   discover_bps_sources.py      Attempts BPS dynamic-table discovery
@@ -108,6 +108,8 @@ Run individual datasets:
 .venv/bin/python scripts/download_gdp.py
 .venv/bin/python scripts/download_inflation.py
 .venv/bin/python scripts/download_inequality.py
+.venv/bin/python scripts/download_welfare_distribution.py
+.venv/bin/python scripts/download_comparative_growth_inequality.py
 .venv/bin/python scripts/download_poverty.py
 .venv/bin/python scripts/download_labor.py
 .venv/bin/python scripts/download_cost_of_living.py
@@ -119,7 +121,7 @@ Run BPS source discovery separately:
 .venv/bin/python scripts/discover_bps_sources.py
 ```
 
-Raw JSON responses are saved locally in `data/raw/`. Standardized yearly CSVs are saved locally in `data/processed/`. These generated data files are ignored by git so the repository stays lightweight and reproducible.
+Raw source extracts are saved locally in `data/raw/`. Standardized analysis CSVs are saved locally in `data/processed/`. These generated data files are ignored by git so the repository stays lightweight and reproducible.
 
 ## R / Quarto Environment
 
@@ -141,7 +143,7 @@ The `.qmd` expects Phase 1 data outputs to exist locally under `data/processed/`
 
 ## Reproducibility Guarantees
 
-The World Bank-backed outputs are reproducible from the scripts in this repository. Running `scripts/download_all.py` fetches the raw World Bank API responses and rebuilds the processed CSVs.
+The World Bank-backed outputs are reproducible from the scripts in this repository. Running `scripts/download_all.py` fetches the raw World Bank API responses, filters World Bank PIP percentile data to Indonesia, and rebuilds the processed CSVs.
 
 Current guarantees:
 
@@ -158,13 +160,13 @@ This README and the source code are enough to reproduce the current pipeline fro
 
 World Bank API is the current working source for the baseline annual country-level pipeline because it provides stable Indonesia (`IDN`) indicators without an API key.
 
-BPS is still the preferred source for Indonesia-specific fields such as detailed CPI categories, commodity prices, administered prices, wages, informal employment, and SUSENAS expenditure distributions. The current BPS discovery attempt did not return usable table metadata, so those fields are intentionally left blank rather than filled manually without a reproducible source.
+BPS is still the preferred source for Indonesia-specific fields such as detailed CPI categories, commodity prices, administered prices, wages, and informal employment. The current BPS discovery attempt did not return usable table metadata, so those fields are intentionally left blank rather than filled manually without a reproducible source.
 
 ## Processed Data
 
-After running Phase 1, the processed files in `data/processed/` use one row per calendar year for Indonesia, currently covering 2000-2024. Some indicators have missing values when the upstream source has no observation for a year.
+After running Phase 1, most processed files in `data/processed/` use one row per calendar year for Indonesia, currently covering 2000-2024. `welfare_distribution_indonesia.csv` is long by year and population group. Some indicators have missing values when the upstream source has no observation for a year.
 
-For this small project, the processed data dictionary is kept in the main README because there are only six processed files and the schemas are short. A separate `docs/data_dictionary.md` would be better once the documentation grows, the number of tables increases, or provenance notes become too detailed for the README.
+For this small project, the processed data dictionary is kept in the main README because there are only a few processed files and the schemas are short. A separate `docs/data_dictionary.md` would be better once the documentation grows, the number of tables increases, or provenance notes become too detailed for the README.
 
 Shared columns:
 
@@ -178,15 +180,23 @@ Annual GDP and GDP-per-capita indicators from the World Bank.
 World Bank indicators:
 
 - `NY.GDP.MKTP.KD.ZG`: GDP growth, annual %
+- `NY.GDP.MKTP.CN`: GDP, current local currency unit
+- `NY.GDP.MKTP.KN`: GDP, constant local currency unit
+- `NY.GDP.PCAP.CN`: GDP per capita, current local currency unit
+- `NY.GDP.PCAP.KN`: GDP per capita, constant local currency unit
 - `NY.GDP.PCAP.KD`: GDP per capita, constant 2015 US$
 - `NY.GDP.PCAP.CD`: GDP per capita, current US$
 
 Columns:
 
 - `year`: calendar year.
-- `gdp_growth`: annual GDP growth rate, in percent.
-- `real_gdp_per_capita`: GDP per capita in constant 2015 US dollars.
-- `nominal_gdp_per_capita`: GDP per capita in current US dollars.
+- `gdp_growth`: annual GDP growth rate, in percent. This is already based on constant-price GDP.
+- `nominal_gdp_lcu`: GDP in current local currency units. Use this for the unadjusted domestic GDP level.
+- `real_gdp_lcu`: GDP in constant local currency units. Use this as the preferred output measure when avoiding both inflation effects and US-dollar exchange-rate effects.
+- `nominal_gdp_per_capita_lcu`: GDP per capita in current local currency units.
+- `real_gdp_per_capita_lcu`: GDP per capita in constant local currency units. Use this as the preferred domestic living-standard proxy.
+- `real_gdp_per_capita`: GDP per capita in constant 2015 US dollars. Useful for international comparison, but still expressed in US dollars.
+- `nominal_gdp_per_capita`: GDP per capita in current US dollars. Use cautiously because exchange-rate movement can affect the series.
 - `source`: data source.
 
 ### `data/processed/inflation_indonesia.csv`
@@ -242,6 +252,53 @@ Columns:
 - `expenditure_top20`: income or consumption share of the highest quintile, in percent.
 - `distribution_top10`: income or consumption share of the highest decile, in percent.
 - `source`: data source and survey-basis caveat.
+
+### `data/processed/welfare_distribution_indonesia.csv`
+
+Grouped welfare estimates derived from World Bank Poverty and Inequality Platform (PIP) percentile data. The script filters the global percentile file to Indonesia, keeps national rows, and aggregates percentiles into bottom 10%, bottom 40%, middle 40%, top 20%, and top 10% groups.
+
+For the current Indonesia rows, `welfare_type` is `consumption`. The welfare level is average daily consumption per person in 2017 PPP US dollars.
+
+Source file:
+
+- World Bank PIP percentiles: `world_100bin.csv`
+
+Columns:
+
+- `year`: calendar year.
+- `group`: population group.
+- `welfare_type`: whether the PIP welfare concept is income or consumption. Current Indonesia rows use `consumption`.
+- `avg_welfare_ppp_daily`: weighted average welfare for the group, in 2017 PPP US dollars per person per day.
+- `population_share`: share of national population represented by the group, from 0 to 1.
+- `welfare_share`: share of total measured welfare received by the group, from 0 to 1.
+- `population`: estimated population represented by the group.
+- `source`: data source and unit note.
+
+### `data/processed/comparative_inequality_growth.csv`
+
+Cross-country comparison dataset for the question: does higher inequality today tend to precede weaker future growth? This is supporting comparative evidence, not Indonesia-only causal proof.
+
+The script combines World Bank Gini observations with real GDP per capita in constant 2015 US dollars, then computes annualized 5-year and 10-year future growth after each inequality observation.
+
+World Bank indicators:
+
+- `SI.POV.GINI`: Gini index
+- `NY.GDP.PCAP.KD`: GDP per capita, constant 2015 US dollars
+
+Columns:
+
+- `country_code`: ISO 3-letter country code.
+- `country_name`: country name.
+- `region`: World Bank region.
+- `income_level`: World Bank income group.
+- `year`: inequality observation year.
+- `gini`: Gini index in that year.
+- `gdp_per_capita_constant_2015_usd`: real GDP per capita in the same year.
+- `future_5y_growth_pct`: annualized real GDP-per-capita growth from `year` to `year + 5`, in percent.
+- `future_10y_growth_pct`: annualized real GDP-per-capita growth from `year` to `year + 10`, in percent.
+- `future_5y_end_year`: end year used for the 5-year growth calculation.
+- `future_10y_end_year`: end year used for the 10-year growth calculation.
+- `source`: data source note.
 
 ### `data/processed/poverty_indonesia.csv`
 
@@ -349,6 +406,6 @@ Use official BPS portals, BPS API metadata, ILOSTAT, or another official reprodu
 - wage or average wage annual series
 - real wage growth
 - informal employment share
-- SUSENAS/BPS expenditure distribution by decile or quintile
+- BPS/SUSENAS expenditure distribution validation against World Bank PIP percentile aggregates
 
 After stable source IDs are confirmed, add source-specific download scripts that save raw data to `data/raw/` and write yearly outputs to the existing CSV schemas in `data/processed/`.

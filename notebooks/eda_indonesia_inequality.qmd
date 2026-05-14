@@ -70,6 +70,8 @@ files <- c(
   gdp = "gdp_indonesia.csv",
   inflation = "inflation_indonesia.csv",
   inequality = "inequality_indonesia.csv",
+  welfare_distribution = "welfare_distribution_indonesia.csv",
+  comparative_growth = "comparative_inequality_growth.csv",
   poverty = "poverty_indonesia.csv",
   labor = "labor_indonesia.csv",
   cost_of_living = "cost_of_living_indonesia.csv"
@@ -78,6 +80,8 @@ files <- c(
 data <- files %>%
   imap(~ read_processed_csv(.x)) %>%
   set_names(names(files))
+
+indonesia_data <- data[names(data) != "comparative_growth"]
 
 data %>%
   imap_dfr(~ tibble(
@@ -94,7 +98,7 @@ data %>%
 This view checks which dataset-year combinations contain any non-source values beyond `year`. It is a quick QA step before looking at individual indicators.
 
 ```{r data-coverage, fig.width=10, fig.height=5.5}
-coverage <- data %>%
+coverage <- indonesia_data %>%
   imap_dfr(function(df, dataset_name) {
     value_cols <- df %>%
       select(-any_of(c("year", "source"))) %>%
@@ -104,7 +108,7 @@ coverage <- data %>%
       rowwise() %>%
       mutate(
         dataset = dataset_name,
-        available_fields = sum(!is.na(c_across(all_of(value_cols)))),
+        available_fields = sum(!is.na(pick(all_of(value_cols)))),
         total_fields = length(value_cols),
         coverage_rate = if_else(total_fields > 0, available_fields / total_fields, 0)
       ) %>%
@@ -136,7 +140,7 @@ Instead of plotting every column name, this section groups fields into three pla
 The empty fields are mostly BPS-dependent fields. They are present in the schema so the pipeline has a stable destination once BPS/API/manual sources are added.
 
 ```{r field-availability-table}
-availability <- data %>%
+availability <- indonesia_data %>%
   imap_dfr(function(df, dataset_name) {
     df %>%
       select(-any_of(c("year", "source"))) %>%
@@ -188,35 +192,22 @@ availability %>%
   arrange(dataset, field)
 ```
 
-## GDP and Per-Capita Output
+## Real GDP and Per-Capita Output
 
-These charts inspect the available GDP growth and per-capita output fields. This is descriptive only.
+The main growth story uses real GDP in local currency. This removes domestic price effects and avoids making the first chart depend on US-dollar exchange-rate movement.
 
 ```{r gdp-per-capita, fig.width=10, fig.height=5.5}
-gdp_long <- data$gdp %>%
-  select(year, real_gdp_per_capita, nominal_gdp_per_capita) %>%
-  pivot_longer(
-    cols = c(real_gdp_per_capita, nominal_gdp_per_capita),
-    names_to = "metric",
-    values_to = "value"
-  ) %>%
-  drop_na(value) %>%
-  mutate(metric = recode(
-    metric,
-    real_gdp_per_capita = "Real GDP per capita",
-    nominal_gdp_per_capita = "Nominal GDP per capita"
-  ))
-
-gdp_long %>%
-  ggplot(aes(year, value, color = metric)) +
+data$gdp %>%
+  drop_na(real_gdp_per_capita_lcu) %>%
+  ggplot(aes(year, real_gdp_per_capita_lcu)) +
   geom_line(linewidth = 1.1) +
   geom_point(size = 1.8) +
-  scale_color_manual(values = c(palette[["blue"]], palette[["gold"]])) +
+  scale_y_continuous(labels = label_number(scale_cut = cut_short_scale())) +
   scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
   labs(
-    title = "GDP per Capita Series",
-    subtitle = "World Bank API, Indonesia",
-    x = "Year", y = "US dollars", color = "Metric"
+    title = "Real GDP per Capita",
+    subtitle = "World Bank API, constant local currency; price effects already removed",
+    x = "Year", y = "Constant Indonesian rupiah"
   ) +
   chart_theme()
 ```
@@ -273,25 +264,62 @@ inflation_long %>%
 
 ## Inequality and Distribution Shares
 
-The pipeline currently uses World Bank Gini, decile, and quintile distribution indicators. The distribution fields are treated as provisional for expenditure analysis because World Bank metadata may describe them as income or consumption shares depending on survey source.
+The pipeline uses World Bank PIP percentile data for absolute group-level welfare and World Bank inequality indicators for Gini. For Indonesia, the current PIP welfare type is consumption, so group-level welfare can be read as average consumption per person per day in 2017 PPP dollars.
 
-The broad bottom 40% / middle 40% / top 20% view is useful, but it can hide tail behavior. The added bottom 10% and top 10% view checks whether distribution changes are more extreme at the ends.
+```{r group-consumption, fig.width=10, fig.height=6}
+broad_groups <- c("Bottom 40%", "Middle 40%", "Top 20%")
+
+group_consumption <- data$welfare_distribution %>%
+  filter(group %in% broad_groups) %>%
+  mutate(group = factor(group, levels = broad_groups)) %>%
+  drop_na(avg_welfare_ppp_daily)
+
+group_consumption_labels <- group_consumption %>%
+  group_by(group) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(first_welfare = first(avg_welfare_ppp_daily)) %>%
+  slice_tail(n = 1) %>%
+  ungroup() %>%
+  mutate(
+    growth_pct = (avg_welfare_ppp_daily / first_welfare - 1) * 100,
+    growth_label = sprintf("+%.0f%%", growth_pct)
+  )
+
+group_consumption %>%
+  ggplot(aes(year, avg_welfare_ppp_daily, color = group)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  geom_text(
+    data = group_consumption_labels,
+    aes(label = growth_label),
+    nudge_x = 0.7,
+    hjust = 0,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ group, scales = "free_y", ncol = 3) +
+  scale_color_manual(values = c(palette[["green"]], palette[["blue"]], palette[["red"]])) +
+  scale_y_continuous(labels = label_number(scale_cut = cut_short_scale())) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title = "Average Consumption by Population Group",
+    subtitle = "End labels show growth from first available year to final year; 2017 PPP USD per person per day",
+    x = "Year", y = "Daily consumption", color = "Group"
+  ) +
+  chart_theme() +
+  theme(plot.margin = margin(5.5, 60, 5.5, 5.5))
+```
+
+The broad bottom 40% / middle 40% / top 20% share view answers a different question: whether each group receives a larger or smaller slice of total consumption. The added bottom 10% and top 10% view checks whether distribution changes are more extreme at the ends.
 
 ```{r distribution-shares, fig.width=10, fig.height=5.5}
-ineq_long <- data$inequality %>%
-  select(year, expenditure_bottom40, expenditure_middle40, expenditure_top20) %>%
-  pivot_longer(
-    cols = c(expenditure_bottom40, expenditure_middle40, expenditure_top20),
-    names_to = "group",
-    values_to = "share"
+ineq_long <- data$welfare_distribution %>%
+  filter(group %in% broad_groups) %>%
+  mutate(
+    group = factor(group, levels = broad_groups),
+    share = welfare_share * 100
   ) %>%
-  drop_na(share) %>%
-  mutate(group = recode(
-    group,
-    expenditure_bottom40 = "Bottom 40%",
-    expenditure_middle40 = "Middle 40%",
-    expenditure_top20 = "Top 20%"
-  ))
+  drop_na(share)
 
 ineq_change_labels <- ineq_long %>%
   group_by(group) %>%
@@ -329,52 +357,99 @@ ineq_long %>%
 
 ### Tail Distribution Shares
 
-This view compares the bottom 10% and top 10% shares directly. The top 10% series is plotted against the right axis so the opposite movement between the two tails is easier to read.
+This view compares the bottom 10% and top 10% in two ways: absolute average consumption and share of total consumption. The absolute chart answers whether each tail improved in level terms. The share chart answers whether each tail received a larger or smaller slice of total consumption.
 
-```{r tail-distribution-shares, fig.width=10, fig.height=5.5}
-tail <- data$inequality %>%
-  select(year, distribution_bottom10, distribution_top10) %>%
-  drop_na()
+```{r tail-absolute-consumption, fig.width=10, fig.height=5.5}
+tail <- data$welfare_distribution %>%
+  filter(group %in% c("Bottom 10%", "Top 10%")) %>%
+  mutate(group = factor(group, levels = c("Bottom 10%", "Top 10%")))
 
-bottom_range <- range(tail$distribution_bottom10, na.rm = TRUE)
-top_range <- range(tail$distribution_top10, na.rm = TRUE)
+tail_consumption <- tail %>%
+  select(year, group, avg_welfare_ppp_daily) %>%
+  drop_na(avg_welfare_ppp_daily)
 
-top_to_bottom <- function(x) {
-  (x - top_range[1]) / diff(top_range) * diff(bottom_range) + bottom_range[1]
-}
+tail_consumption_labels <- tail_consumption %>%
+  group_by(group) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(first_welfare = first(avg_welfare_ppp_daily)) %>%
+  slice_tail(n = 1) %>%
+  ungroup() %>%
+  mutate(
+    growth_pct = (avg_welfare_ppp_daily / first_welfare - 1) * 100,
+    growth_label = sprintf("+%.0f%%", growth_pct)
+  )
 
-bottom_to_top <- function(x) {
-  (x - bottom_range[1]) / diff(bottom_range) * diff(top_range) + top_range[1]
-}
-
-tail %>%
-  mutate(distribution_top10_scaled = top_to_bottom(distribution_top10)) %>%
-  ggplot(aes(year)) +
-  geom_line(aes(y = distribution_bottom10, color = "Bottom 10%"), linewidth = 1.1) +
-  geom_point(aes(y = distribution_bottom10, color = "Bottom 10%"), size = 1.8) +
-  geom_line(aes(y = distribution_top10_scaled, color = "Top 10%"), linewidth = 1.1) +
-  geom_point(aes(y = distribution_top10_scaled, color = "Top 10%"), size = 1.8) +
+tail_consumption %>%
+  ggplot(aes(year, avg_welfare_ppp_daily, color = group)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  geom_text(
+    data = tail_consumption_labels,
+    aes(label = growth_label),
+    nudge_x = 0.7,
+    hjust = 0,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
   scale_color_manual(values = c(
     "Bottom 10%" = palette[["green"]],
     "Top 10%" = palette[["red"]]
   )) +
-  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
-  scale_y_continuous(
-    name = "Bottom 10% share (%)",
-    sec.axis = sec_axis(~ bottom_to_top(.), name = "Top 10% share (%)")
-  ) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
+  coord_cartesian(clip = "off") +
   labs(
-    title = "Tail Distribution Shares",
-    subtitle = "Top 10% uses the right axis; World Bank decile basis depends on survey metadata",
-    x = "Year", color = "Group"
+    title = "Tail Average Consumption",
+    subtitle = "End labels show growth from first available year to final year; 2017 PPP USD per person per day",
+    x = "Year", y = "Daily consumption", color = "Group"
   ) +
   chart_theme() +
-  theme(
-    axis.title.y.left = element_text(color = palette[["green"]]),
-    axis.text.y.left = element_text(color = palette[["green"]]),
-    axis.title.y.right = element_text(color = palette[["red"]]),
-    axis.text.y.right = element_text(color = palette[["red"]])
+  theme(plot.margin = margin(5.5, 60, 5.5, 5.5))
+```
+
+```{r tail-distribution-shares, fig.width=10, fig.height=5.5}
+tail_shares <- tail %>%
+  select(year, group, welfare_share) %>%
+  mutate(
+    share = welfare_share * 100
+  ) %>%
+  drop_na(share)
+
+tail_share_labels <- tail_shares %>%
+  group_by(group) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(first_share = first(share)) %>%
+  slice_tail(n = 1) %>%
+  ungroup() %>%
+  mutate(
+    growth_pct = (share / first_share - 1) * 100,
+    growth_label = sprintf("%+.0f%%", growth_pct)
   )
+
+tail_shares %>%
+  ggplot(aes(year, share, color = group)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  geom_text(
+    data = tail_share_labels,
+    aes(label = growth_label),
+    nudge_x = 0.7,
+    hjust = 0,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = c(
+    "Bottom 10%" = palette[["green"]],
+    "Top 10%" = palette[["red"]]
+  )) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title = "Tail Distribution Shares",
+    subtitle = "End labels show growth from first available year to final year; World Bank PIP consumption shares",
+    x = "Year", y = "Share (%)", color = "Group"
+  ) +
+  chart_theme() +
+  theme(plot.margin = margin(5.5, 60, 5.5, 5.5))
 ```
 
 ```{r gini-index, fig.width=10, fig.height=5.5}
@@ -391,6 +466,97 @@ data$inequality %>%
   ) +
   chart_theme()
 ```
+
+## Comparative Inequality and Future Growth
+
+This section treats the inequality-growth question comparatively, not as Indonesia-only causal proof. It asks whether country-years with higher inequality tend to be followed by weaker real GDP-per-capita growth.
+
+The chart uses middle-income country observations only, because Indonesia is currently an upper-middle-income country and the comparison is more meaningful among countries at broadly similar development stages.
+
+```{r comparative-inequality-growth, fig.width=10, fig.height=5.8}
+comparative_long <- data$comparative_growth %>%
+  filter(income_level %in% c("Lower middle income", "Upper middle income")) %>%
+  select(
+    country_code, country_name, region, income_level, year, gini,
+    future_5y_growth_pct, future_10y_growth_pct
+  ) %>%
+  pivot_longer(
+    cols = c(future_5y_growth_pct, future_10y_growth_pct),
+    names_to = "horizon",
+    values_to = "future_growth_pct"
+  ) %>%
+  mutate(
+    horizon = recode(
+      horizon,
+      future_5y_growth_pct = "Next 5 years",
+      future_10y_growth_pct = "Next 10 years"
+    ),
+    focus = if_else(country_code == "IDN", "Indonesia", "Other middle-income countries")
+  ) %>%
+  drop_na(gini, future_growth_pct)
+
+indonesia_labels <- comparative_long %>%
+  filter(country_code == "IDN", year %in% c(2000, 2010, 2014))
+
+comparative_long %>%
+  ggplot(aes(gini, future_growth_pct)) +
+  geom_hline(yintercept = 0, color = palette[["gray"]], linetype = "dashed") +
+  geom_point(
+    data = comparative_long %>% filter(focus != "Indonesia"),
+    color = palette[["gray"]],
+    alpha = 0.28,
+    size = 1.7
+  ) +
+  geom_smooth(
+    data = comparative_long %>% filter(focus != "Indonesia"),
+    method = "lm",
+    formula = y ~ x,
+    se = FALSE,
+    color = palette[["purple"]],
+    linewidth = 1
+  ) +
+  geom_point(
+    data = comparative_long %>% filter(focus == "Indonesia"),
+    color = palette[["red"]],
+    size = 2.4
+  ) +
+  geom_text(
+    data = indonesia_labels,
+    aes(label = year),
+    color = palette[["red"]],
+    nudge_x = 0.8,
+    hjust = 0,
+    size = 3,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ horizon, ncol = 2) +
+  scale_x_continuous(limits = c(20, 65), breaks = seq(20, 65, by = 10)) +
+  labs(
+    title = "Inequality Today and Future Growth",
+    subtitle = "Middle-income country-years; red points highlight Indonesia. Trend line is descriptive, not causal.",
+    x = "Gini index in year t",
+    y = "Annualized future real GDP per-capita growth (%)"
+  ) +
+  chart_theme()
+```
+
+```{r comparative-inequality-growth-table}
+comparative_long %>%
+  filter(horizon == "Next 10 years") %>%
+  mutate(gini_band = cut(gini, breaks = c(20, 30, 40, 50, 60, 70), right = FALSE)) %>%
+  group_by(gini_band) %>%
+  summarise(
+    observations = n(),
+    median_future_growth = median(future_growth_pct, na.rm = TRUE),
+    p25_future_growth = quantile(future_growth_pct, 0.25, na.rm = TRUE),
+    p75_future_growth = quantile(future_growth_pct, 0.75, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(across(ends_with("growth"), ~ round(.x, 2))) %>%
+  arrange(gini_band)
+```
+
+Interpret this cautiously. The chart can support a comparative risk statement: higher inequality is often discussed as a possible drag on future growth, but this simple view does not prove causality. Country structure, education, investment, institutions, global shocks, and commodity cycles also matter.
 
 ## Poverty
 
