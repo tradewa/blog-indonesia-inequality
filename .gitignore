@@ -11,13 +11,9 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# renv local state and package libraries.
-renv/library/
-renv/local/
-renv/cellar/
-renv/lock/
-renv/python/
-renv/sandbox/
-renv/staging/
+# Local R/renv files. Keep these on the machine, not in Git.
+renv/
+.Rprofile
+renv.lock
 .Rproj.user
 .positai
