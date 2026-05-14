@@ -6,10 +6,7 @@ __pycache__/
 notebooks/.quarto/
 
 # Generated data artifacts. Rebuild locally with scripts/download_all.py.
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+data/
 
 # Local R/renv files. Keep these on the machine, not in Git.
 renv/
