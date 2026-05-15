@@ -12,6 +12,8 @@ data/
 # Local R/renv files. Keep these on the machine, not in Git.
 renv/
 .Rprofile
+.Rhistory
+.RData
 renv.lock
 .Rproj.user
 .positai

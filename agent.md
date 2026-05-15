@@ -20,10 +20,13 @@ Current phase status:
 
 Implemented:
 
-- World Bank-backed download scripts for GDP, inflation, inequality, PIP welfare distribution, comparative inequality-growth, poverty, labor, and cost-of-living baseline data.
+- Download scripts for GDP, inflation, inequality, PIP welfare distribution, comparative inequality-growth, poverty, labor, and cost-of-living baseline data.
+- ILOSTAT average monthly earnings download through `scripts/download_labor.py` using `EAR_EMTA_SEX_NB_A`, with real wage growth calculated from World Bank CPI.
+- BPS WebAPI category CPI download through `scripts/download_inflation.py` using variables `1905`, `1907`, `1909`, `1910`, `1913`, and `1915`.
+- BPS WebAPI rice-price download through `scripts/download_cost_of_living.py` using variable `295`.
 - Raw API response persistence under `data/raw/`, ignored by git.
 - Standardized annual processed CSVs under `data/processed/`, ignored by git.
-- A BPS dynamic-table discovery script that records failure output when the BPS API does not return usable metadata.
+- A BPS discovery script that scans working subject-variable endpoints and records raw metadata responses.
 - Phase 2 EDA notebook at `notebooks/eda_indonesia_inequality.ipynb`.
 - Phase 2 R/Quarto equivalent at `notebooks/eda_indonesia_inequality.qmd`.
 - Phase 3 analysis skeleton at `reports/skeleton.md`.
@@ -33,7 +36,9 @@ Not implemented:
 
 - Final statistical modeling.
 - Dashboarding or publication narrative.
-- BPS-backed fills for category CPI, commodity/administered prices, wages, informal employment, or SUSENAS-specific validation fields.
+- BPS-backed fills for administered prices, informal employment, or SUSENAS-specific validation fields.
+- Longer CPI category history before 2020 and a documented bridge to the 2024 BPS 2022=100 CPI base.
+- Retail commodity-price series beyond the currently mapped wholesale rice price.
 - Output validation checks.
 
 ## Operating Rule
@@ -75,7 +80,9 @@ Phase 3 is where written analysis belongs. Keep the current skeleton as the sour
 - World Bank is the current baseline source because it provides stable annual Indonesia (`IDN`) indicators without an API key.
 - World Bank PIP percentile data now provides grouped absolute consumption estimates for Indonesia in 2017 PPP USD per person per day.
 - BPS remains the preferred future source for category CPI, commodity prices, administered prices, wages, informal employment, and validation of SUSENAS/BPS expenditure distribution.
-- The current BPS discovery failure is recorded at `data/raw/bps_dynamic_tables_page1_error.json`.
+- The old BPS `model=dynamictable` endpoint is not usable, but `model=var` subject discovery works. The current discovery script scans relevant subjects including consumer prices, consumption/expenditure, wages, wholesale prices, and poverty/inequality.
+- Direct BPS data endpoints work when a stable variable ID is known. Current mapped examples are BPS CPI category variables `1905`, `1907`, `1909`, `1910`, `1913`, and `1915` for 2020-2023, plus wholesale rice price variable `295` for 2010-2024.
+- `labor_indonesia.csv` includes ILOSTAT average monthly earnings for employees through 2023 and calculated real wage growth. This is employee wage evidence, not full household income and not informal/self-employed earnings.
 - `inequality_indonesia.csv` now includes bottom/top decile shares plus grouped bottom 40%, middle 40%, and top 20% shares. `welfare_distribution_indonesia.csv` is preferred for group-level absolute welfare because it uses PIP percentile averages; current Indonesia rows use `consumption`.
 - `comparative_inequality_growth.csv` provides cross-country Gini observations with future 5-year and 10-year real GDP-per-capita growth. Use it as comparative evidence only, not Indonesia-only causal proof.
 - `vulnerable_employment_share` is related to informal employment but is not a direct substitute.
@@ -85,7 +92,7 @@ Phase 3 is where written analysis belongs. Keep the current skeleton as the sour
 Highest-priority follow-ups:
 
 - Add a lightweight `scripts/validate_outputs.py` that checks expected files, columns, years, and documented placeholder fields.
-- Confirm stable BPS table IDs for CPI categories and real-life cost indicators.
-- Add reproducible BPS download scripts once table IDs are known.
-- Confirm an official source for wages, real wage growth, and informal employment.
+- Confirm stable BPS table or variable IDs for real-life cost indicators beyond CPI categories and wholesale rice.
+- Add reproducible BPS download scripts once source IDs are known.
+- Validate ILOSTAT wage series against BPS/Sakernas if a clean national BPS wage series is confirmed, and find an official informal employment source.
 - Validate World Bank PIP percentile aggregates against BPS/SUSENAS expenditure distribution if a stable source is found.

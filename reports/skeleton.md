@@ -1,6 +1,27 @@
 # Indonesia Growth and Distribution Analysis Skeleton
 
-## 1. Show Real GDP First
+## 1. Open With The Public Concern
+
+Open with the current public feeling:
+
+> Lately, many Indonesians feel that the country is becoming more unequal. The middle class feels squeezed, the rich appear to be pulling further away, and basic routes to mobility such as housing, education, healthcare, and stable work feel harder to access.
+
+Then clarify the purpose of the analysis:
+
+> Instead of starting from that feeling alone, first locate Indonesia's inequality position relative to other countries. Is Indonesia unusually unequal, moderately unequal, or closer to advanced-country levels?
+
+Use a country comparison chart:
+
+- Indonesia
+- relevant Asian peers: Vietnam, Thailand, Malaysia, Philippines, China, India
+- higher-inequality emerging peers: Brazil, Mexico, Chile
+- advanced-country benchmarks: Japan, Korea, Germany, France, Australia, United States
+
+Expected framing:
+
+> Indonesia is not the most unequal country in the comparison set, but it is also not at the lower-inequality benchmark seen in several advanced economies. This makes the public concern plausible enough to investigate further, especially when combined with evidence that top groups captured more of total consumption over time.
+
+## 2. Show Real GDP First
 
 Start with real GDP in local currency.
 
@@ -10,7 +31,7 @@ Real GDP answers: how much did the economy produce after holding prices constant
 
 Do not lead with nominal GDP in the main story. Nominal GDP is useful context, but it includes both real output growth and price changes.
 
-## 2. Explain What Was Removed
+## 3. Explain What Was Removed
 
 Briefly explain the distinction:
 
@@ -21,7 +42,7 @@ Because the analysis uses local-currency real GDP, the story does not need a dee
 
 Mention only as a caveat: US-dollar GDP is useful for international comparison, but it can move because of rupiah-to-dollar exchange-rate movement. CPI captures domestic price changes, not currency conversion.
 
-## 3. Show Absolute Group-Level Consumption
+## 4. Show Absolute Group-Level Consumption
 
 Use World Bank PIP percentile data to show average consumption by group.
 
@@ -46,7 +67,7 @@ Expected claim to test:
 
 > All broad groups increased in average consumption over the period.
 
-## 4. Then Show Distribution Shares
+## 5. Then Show Distribution Shares
 
 After showing absolute gains, show the distribution-share chart.
 
@@ -58,7 +79,7 @@ Current interpretation:
 - The middle 40% can also gain in absolute terms while losing share.
 - The top 20% gains both in absolute terms and in share.
 
-## 5. Deep Dive: Bottom 10% vs Top 10%
+## 6. Deep Dive: Bottom 10% vs Top 10%
 
 After the broad group chart, zoom into the tails.
 
@@ -78,7 +99,7 @@ Expected interpretation:
 
 The wording needs to stay precise. The claim is not that the poorest got worse in absolute terms. The claim is that growth was unevenly captured.
 
-## 6. Normative Question: Is This Good or Bad?
+## 7. Normative Question: Is This Good or Bad?
 
 This is the uncomfortable question:
 
@@ -103,7 +124,7 @@ The report should not answer this with a simple yes or no. The stronger framing 
 
 > Indonesia's growth appears to have improved absolute consumption across the distribution, including the poorest groups. But the gains were uneven, with the top capturing more of the expanding economic pie. Whether this is considered acceptable depends on whether the benchmark is absolute poverty reduction, proportional fairness, social mobility, or political equality.
 
-## 7. Main Narrative
+## 8. Main Narrative
 
 The stronger story is:
 

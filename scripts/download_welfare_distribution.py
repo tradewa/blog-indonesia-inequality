@@ -17,11 +17,13 @@ RAW_OUTPUT = RAW_DIR / "worldbank_pip_percentiles_indonesia.csv"
 PROCESSED_OUTPUT = PROCESSED_DIR / "welfare_distribution_indonesia.csv"
 
 GROUPS = {
+    "Bottom 1%": range(1, 2),
     "Bottom 10%": range(1, 11),
     "Bottom 40%": range(1, 41),
     "Middle 40%": range(41, 81),
     "Top 20%": range(81, 101),
     "Top 10%": range(91, 101),
+    "Top 1%": range(100, 101),
 }
 
 FIELDS = [
