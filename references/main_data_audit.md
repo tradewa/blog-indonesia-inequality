@@ -126,9 +126,10 @@ Script:
 
 - `scripts/download_gdp.py`
 
-Raw source:
+Raw sources:
 
 - World Bank indicator `NY.GDP.PCAP.KN`: GDP per capita, constant local currency unit
+- World Bank indicator `PA.NUS.PRVT.PP`: PPP conversion factor for households and NPISHs final consumption expenditure
 
 Raw data shape:
 
@@ -146,6 +147,7 @@ Relevant processed columns:
 - `real_gdp_per_capita_lcu`: constant-price GDP per person in Indonesian rupiah
 - `gdp_growth`: annual constant-price GDP growth
 - `nominal_gdp_per_capita`: current USD, kept only as a cautionary comparison field
+- `ppp_private_consumption`: rupiah per international dollar for private consumption
 
 ## 3. Average Consumption By Population Group
 
@@ -299,126 +301,7 @@ inflation_long <- data$inflation %>%
   )
 ```
 
-## 6. BPS Category CPI Indexes
-
-Main chart:
-
-- `BPS Category CPI Indexes`
-
-Processed file:
-
-- `data/processed/inflation_indonesia.csv`
-
-Script:
-
-- `scripts/download_inflation.py`
-
-Raw source:
-
-- BPS WebAPI `model=data`, national domain `0000`
-
-Mapped BPS variables:
-
-- `1905`: foods, beverages, and tobacco CPI, 2018=100
-- `1907`: housing, water, electricity, and household fuel CPI, 2018=100
-- `1909`: health CPI, 2018=100
-- `1910`: transportation CPI, 2018=100
-- `1913`: education CPI, 2018=100
-- `1915`: provision of food and beverages / restaurant CPI, 2018=100
-
-Raw BPS response shape:
-
-The BPS data endpoint returns metadata plus a compact `datacontent` dictionary:
-
-```json
-{
-  "status": "OK",
-  "var": [{"val": 1905, "label": "Consumer Price Index of Foods, Beverages and Tobacco Group and Sub (2018=100)"}],
-  "vervar": [{"val": 9999, "label": "INDONESIA"}],
-  "turvar": [{"val": 1551, "label": "Foods, Beverages and Tobacco"}],
-  "tahun": [{"val": 120, "label": "2020"}],
-  "turtahun": [{"val": 12, "label": "December"}, {"val": 13, "label": "Annually"}],
-  "datacontent": {
-    "99991905155112012": 107.99
-  }
-}
-```
-
-BPS key construction:
-
-The script builds a BPS `datacontent` lookup key by concatenating:
-
-```python
-key = f"{national_region}{variable_code}{group_code}{year_code}{december_subyear}"
-```
-
-For example:
-
-- `9999`: Indonesia
-- `1905`: food CPI variable
-- `1551`: category group
-- `120`: year code for 2020
-- `12`: December
-
-The script uses December national CPI as the year-end category index. It does not stitch 2024 because BPS switches to a 2022=100 base.
-
-## 7. Real Wage Growth
-
-Main chart:
-
-- `Real Wage Growth`
-
-Processed file:
-
-- `data/processed/labor_indonesia.csv`
-
-Script:
-
-- `scripts/download_labor.py`
-
-Raw sources:
-
-- ILOSTAT `EAR_EMTA_SEX_NB_A`: average monthly earnings of employees by sex, local currency, annual
-- World Bank `FP.CPI.TOTL`: total CPI, used as deflator
-
-Raw ILOSTAT shape:
-
-ILOSTAT bulk data is CSV.gz:
-
-```text
-ref_area,source,indicator,sex,time,obs_value,obs_status,note_indicator,note_source
-IDN,BA:510,EAR_EMTA_SEX_NB,SEX_T,2023,2776803.875,,T30:122,R1:3513
-IDN,BA:510,EAR_EMTA_SEX_NB,SEX_M,2023,3007410.446,,T30:122,R1:3513
-IDN,BA:510,EAR_EMTA_SEX_NB,SEX_F,2023,2307995.085,,T30:122,R1:3513
-```
-
-Transformation concept:
-
-1. Download the ILOSTAT earnings dataset.
-2. Filter to:
-   - `ref_area == "IDN"`
-   - `sex == "SEX_T"` for total sex
-   - years 2000-2024
-3. Store nominal average monthly earnings as `avg_wage`.
-4. Join World Bank total CPI by year.
-5. Calculate real wage index internally:
-
-```python
-real_wage = avg_wage / cpi_total * 100
-```
-
-6. Calculate annual real wage growth:
-
-```python
-real_wage_growth =
-    (real_wage[year] / real_wage[year - 1] - 1) * 100
-```
-
-Interpretation caveat:
-
-This is employee earnings, not full household income. It does not fully capture informal workers or self-employed workers.
-
-## 8. Nominal Wages, Prices, And Purchasing Power
+## 6. Nominal Wages, Prices, And Purchasing Power
 
 Main chart:
 
@@ -451,7 +334,7 @@ Why 2019:
 
 2019 is used as the pre-pandemic anchor for the wage-price comparison. The current data show that from 2019 to 2023 nominal average employee earnings increased, but CPI increased faster, so real wages remained below the 2019 index.
 
-## 9. Household Price Pressure
+## 7. Household Price Pressure
 
 Main chart:
 
@@ -460,56 +343,57 @@ Main chart:
 Processed files:
 
 - `data/processed/inflation_indonesia.csv`
-- `data/processed/cost_of_living_indonesia.csv`
 - `data/processed/labor_indonesia.csv`
-
-Raw source for rice:
-
-- BPS WebAPI variable `295`: average wholesale rice price in Indonesia
-
-Raw BPS rice response:
-
-The rice endpoint has the same BPS `model=data` structure as category CPI:
-
-```json
-{
-  "status": "OK",
-  "var": [{"val": 295, "label": "The average rice price in Level Wholesale Indonesia"}],
-  "tahun": [{"val": 124, "label": "2024"}],
-  "turtahun": [{"val": 0, "label": "Annual"}],
-  "datacontent": {"...": 13717}
-}
-```
 
 Transformation concept:
 
-1. Download BPS rice prices in three-year chunks because the BPS API rejects longer `th` ranges.
-2. Extract annual national wholesale rice price.
-3. Combine:
+1. Combine:
+   - average monthly earnings
    - total CPI
    - selected BPS category CPI indexes
-   - wholesale rice price
-   - average monthly earnings
-4. Rebase each series to 2020 = 100.
+2. Rebase each series to its first available value from 2020 onward.
+3. Plot the series in one shared chart, using solid lines for average monthly earnings and total CPI and dashed lines for category context.
+4. Label each line on the right with its name and cumulative percentage increase, using fixed y-positions to avoid label overlap.
 
 QMD aggregation:
 
 ```r
 price_pressure <- bind_rows(
+  avg_wage,
   total_cpi,
-  category_cpi,
-  rice_price,
-  avg_wage
+  category_cpi
 ) %>%
   filter(year >= 2020) %>%
   group_by(metric) %>%
   arrange(year, .by_group = TRUE) %>%
-  mutate(index_2020 = value / first(value) * 100)
+  mutate(index_start = value / first(value) * 100)
 ```
 
 Interpretation caveat:
 
-This chart compares movements, not household budget weights. A full cost-of-living burden analysis would need expenditure weights by income group.
+This chart compares movements, not household budget weights. Category CPI detail is source-backed only for 2020-2023 in the current BPS 2018=100 taxonomy, so it is used as a recent-period deep dive rather than a stitched long-run series.
+
+## 8. Average Consumption By Decile
+
+Main chart:
+
+- `Average Consumption Growth by Decile`
+
+Input files:
+
+- `data/raw/worldbank_pip_percentiles_indonesia.csv`
+
+Transformation concept:
+
+1. Aggregate World Bank PIP 100-bin percentile rows into 10 decile bands: 0 - 10%, 11 - 20%, ..., 91 - 100%.
+2. Use weighted average `avg_welfare` within each decile, weighted by `pop_share`.
+3. Detect the latest available Indonesia national year in the raw PIP percentile file; the current local file runs through 2024.
+4. Calculate cumulative growth from 2020 to the latest available year for each decile.
+5. Plot a column chart with decile on the x-axis and consumption growth on the y-axis; label each bar with the latest daily consumption level converted to rupiah per day using the latest matching World Bank private-consumption PPP factor.
+
+Interpretation caveat:
+
+The decile series are average consumption/welfare in 2017 PPP dollars per person per day, not wage earnings. Because this is already a real purchasing-power welfare measure, it should not be directly compared with CPI as though it were nominal income. It is valid as a direct living-standard chart.
 
 ## Raw Data Files Produced Locally
 

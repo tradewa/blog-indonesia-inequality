@@ -9,6 +9,7 @@ INDICATORS = {
     "real_gdp_per_capita_lcu": "NY.GDP.PCAP.KN",
     "real_gdp_per_capita": "NY.GDP.PCAP.KD",
     "nominal_gdp_per_capita": "NY.GDP.PCAP.CD",
+    "ppp_private_consumption": "PA.NUS.PRVT.PP",
 }
 
 FIELDS = [
@@ -20,6 +21,7 @@ FIELDS = [
     "real_gdp_per_capita_lcu",
     "real_gdp_per_capita",
     "nominal_gdp_per_capita",
+    "ppp_private_consumption",
     "source",
 ]
 

@@ -143,7 +143,7 @@ The `.qmd` expects Phase 1 data outputs to exist locally under `data/processed/`
 
 ## Reproducibility Guarantees
 
-The current outputs are reproducible from the scripts in this repository. Running `scripts/download_all.py` fetches raw World Bank API responses, filters World Bank PIP percentile data to Indonesia, downloads the currently mapped BPS rice-price series, and rebuilds the processed CSVs.
+The current outputs are reproducible from the scripts in this repository. Running `scripts/download_all.py` fetches raw World Bank API responses, filters World Bank PIP percentile data to Indonesia, downloads ILOSTAT wage data, downloads the currently mapped BPS rice-price series, and rebuilds the processed CSVs.
 
 Current guarantees:
 
@@ -160,7 +160,7 @@ This README and the source code are enough to reproduce the current pipeline fro
 
 World Bank API is the main working source for the baseline annual country-level pipeline because it provides stable Indonesia (`IDN`) indicators without an API key.
 
-BPS is still the preferred source for Indonesia-specific fields such as detailed CPI categories, commodity prices, administered prices, wages, and informal employment. The current working BPS route is subject-variable discovery through `model=var` plus direct data downloads through `model=data`. The inflation script now uses BPS CPI category variables for 2020-2023, and the cost-of-living script uses BPS variable `295` for Indonesia wholesale rice prices.
+BPS is still the preferred source for Indonesia-specific fields such as detailed CPI categories, commodity prices, administered prices, wages, and informal employment. The current working BPS route is subject-variable discovery through `model=var` plus direct data downloads through `model=data`. Total CPI uses the World Bank's continuous annual Indonesia CPI series for the full 2000-2024 horizon. The mapped BPS category CPI variables use the 2018=100 category taxonomy, which is source-backed from 2020 rather than stitched to older BPS base years and category groupings. The cost-of-living script uses BPS variable `295` for Indonesia wholesale rice prices.
 
 ## Processed Data
 
@@ -186,6 +186,7 @@ World Bank indicators:
 - `NY.GDP.PCAP.KN`: GDP per capita, constant local currency unit
 - `NY.GDP.PCAP.KD`: GDP per capita, constant 2015 US$
 - `NY.GDP.PCAP.CD`: GDP per capita, current US$
+- `PA.NUS.PRVT.PP`: PPP conversion factor for households and NPISHs final consumption expenditure, LCU per international dollar
 
 Columns:
 
@@ -197,6 +198,7 @@ Columns:
 - `real_gdp_per_capita_lcu`: GDP per capita in constant local currency units. Use this as the preferred domestic living-standard proxy.
 - `real_gdp_per_capita`: GDP per capita in constant 2015 US dollars. Useful for international comparison, but still expressed in US dollars.
 - `nominal_gdp_per_capita`: GDP per capita in current US dollars. Use cautiously because exchange-rate movement can affect the series.
+- `ppp_private_consumption`: rupiah per international dollar for private consumption, used to convert PIP PPP consumption labels into approximate current rupiah amounts.
 - `source`: data source.
 
 ### `data/processed/inflation_indonesia.csv`
@@ -327,7 +329,7 @@ Columns:
 
 ### `data/processed/labor_indonesia.csv`
 
-Annual labor-market indicators. Unemployment and vulnerable employment are populated from the World Bank. Average monthly earnings are populated from ILOSTAT and real wage growth is calculated by deflating those earnings with World Bank total CPI.
+Annual labor-market indicators. Unemployment and vulnerable employment are populated from the World Bank. Average monthly earnings are populated from ILOSTAT. Real wage growth is retained as a derived field for table checks, calculated by deflating those earnings with World Bank total CPI.
 
 World Bank indicators:
 
@@ -407,7 +409,13 @@ The R/Quarto equivalent is:
 notebooks/eda_indonesia_inequality.qmd
 ```
 
-Both versions use the processed CSVs and make missing fields visible instead of hiding or imputing them.
+The appendix-only Quarto companion is:
+
+```text
+notebooks/eda_indonesia_inequality_appendix.qmd
+```
+
+These notebooks use the processed CSVs and make missing fields visible instead of hiding or imputing them.
 
 ## Known Gaps
 
@@ -418,7 +426,6 @@ Use official BPS portals, BPS API metadata, ILOSTAT, or another official reprodu
 - administered fuel, electricity, or LPG price series
 - rent or housing cost index
 - wage or average wage annual series
-- real wage growth
 - informal employment share
 - BPS/SUSENAS expenditure distribution validation against World Bank PIP percentile aggregates
 

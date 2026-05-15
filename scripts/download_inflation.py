@@ -40,6 +40,7 @@ BPS_CATEGORY_CPI = {
 }
 
 BPS_CPI_YEAR_CODES = [120, 121, 122, 123]
+BPS_CPI_CHUNK_SIZE = 3
 
 
 def extract_bps_category_cpi(payload: dict[str, Any] | None) -> dict[int, float]:
@@ -92,7 +93,10 @@ def extract_bps_category_cpi(payload: dict[str, Any] | None) -> dict[int, float]
 
 def fetch_bps_category_cpi() -> dict[str, dict[int, float]]:
     result: dict[str, dict[int, float]] = {column: {} for column in BPS_CATEGORY_CPI}
-    chunks = [BPS_CPI_YEAR_CODES[:3], BPS_CPI_YEAR_CODES[3:]]
+    chunks = [
+        BPS_CPI_YEAR_CODES[index : index + BPS_CPI_CHUNK_SIZE]
+        for index in range(0, len(BPS_CPI_YEAR_CODES), BPS_CPI_CHUNK_SIZE)
+    ]
 
     for column, variable_id in BPS_CATEGORY_CPI.items():
         for chunk in chunks:
@@ -134,7 +138,7 @@ if __name__ == "__main__":
         row["source"] = (
             "World Bank API for total CPI and inflation; BPS WebAPI December national CPI category "
             "indexes from variables 1905, 1907, 1909, 1910, 1913, and 1915 for 2020-2023 where available "
-            "(2018=100 base)"
+            "(2018=100 base; not stitched to older BPS CPI bases/category taxonomies)"
         )
 
     rows = [rows_by_year[year] for year in sorted(rows_by_year)]

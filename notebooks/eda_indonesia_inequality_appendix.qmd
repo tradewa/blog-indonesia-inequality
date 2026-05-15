@@ -1,0 +1,485 @@
+---
+title: "Indonesia Inequality Project: EDA - Appendix"
+format:
+  html:
+    toc: true
+    code-fold: false
+execute:
+  warning: false
+  message: false
+---
+
+This appendix runs independently from the main EDA notebook. It loads the same processed data files directly and recreates the shared plotting helpers locally.
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(purrr)
+library(readr)
+library(scales)
+library(stringr)
+library(tibble)
+library(tidyr)
+
+project_root <- if (basename(getwd()) == "notebooks") dirname(getwd()) else getwd()
+data_dir <- file.path(project_root, "data", "processed")
+
+palette <- c(
+  blue = "#2F6B9A",
+  red = "#C44E52",
+  green = "#4C956C",
+  gold = "#D4A017",
+  purple = "#7D5BA6",
+  gray = "#6C757D",
+  light = "#F6F7F9",
+  dark = "#1F2933"
+)
+
+chart_theme <- function() {
+  theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14, color = palette[["dark"]]),
+      plot.subtitle = element_text(size = 10, color = palette[["gray"]]),
+      axis.title = element_text(size = 10, color = palette[["dark"]]),
+      axis.text = element_text(size = 9, color = palette[["dark"]]),
+      legend.title = element_text(size = 9, face = "bold"),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+}
+
+read_processed_csv <- function(filename) {
+  read_csv(file.path(data_dir, filename), show_col_types = FALSE) %>%
+    rename_with(str_trim)
+}
+```
+
+## Load Data
+
+```{r load-data}
+files <- c(
+  gdp = "gdp_indonesia.csv",
+  inflation = "inflation_indonesia.csv",
+  inequality = "inequality_indonesia.csv",
+  welfare_distribution = "welfare_distribution_indonesia.csv",
+  comparative_growth = "comparative_inequality_growth.csv",
+  poverty = "poverty_indonesia.csv",
+  labor = "labor_indonesia.csv",
+  cost_of_living = "cost_of_living_indonesia.csv"
+)
+
+data <- files %>%
+  imap(~ read_processed_csv(.x)) %>%
+  set_names(names(files))
+
+indonesia_data <- data[names(data) != "comparative_growth"]
+
+tail <- data$welfare_distribution %>%
+  filter(group %in% c("Bottom 10%", "Top 10%")) %>%
+  mutate(group = factor(group, levels = c("Bottom 10%", "Top 10%")))
+```
+
+# Appendix
+
+## Data Validation
+
+```{r data-summary}
+data %>%
+  imap_dfr(~ tibble(
+    dataset = .y,
+    rows = nrow(.x),
+    first_year = min(.x$year, na.rm = TRUE),
+    last_year = max(.x$year, na.rm = TRUE),
+    columns = ncol(.x)
+  ))
+```
+
+```{r data-coverage, fig.width=10, fig.height=5.5}
+coverage <- indonesia_data %>%
+  imap_dfr(function(df, dataset_name) {
+    value_cols <- df %>%
+      select(-any_of(c("year", "source"))) %>%
+      names()
+
+    df %>%
+      rowwise() %>%
+      mutate(
+        dataset = dataset_name,
+        available_fields = sum(!is.na(pick(all_of(value_cols)))),
+        total_fields = length(value_cols),
+        coverage_rate = if_else(total_fields > 0, available_fields / total_fields, 0)
+      ) %>%
+      ungroup() %>%
+      select(dataset, year, available_fields, total_fields, coverage_rate)
+  })
+
+coverage %>%
+  ggplot(aes(year, dataset, fill = coverage_rate)) +
+  geom_tile(color = "white", linewidth = 0.25) +
+  scale_fill_gradient(low = "#F1F3F5", high = palette[["blue"]], labels = percent_format()) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Processed Data Coverage by Dataset and Year",
+    subtitle = "Darker cells have more populated fields in the standardized CSV schema",
+    x = "Year", y = NULL, fill = "Coverage"
+  ) +
+  chart_theme()
+```
+
+```{r field-availability-table}
+availability <- indonesia_data %>%
+  imap_dfr(function(df, dataset_name) {
+    df %>%
+      select(-any_of(c("year", "source"))) %>%
+      summarise(across(everything(), ~ sum(!is.na(.x)))) %>%
+      pivot_longer(everything(), names_to = "field", values_to = "non_missing_count") %>%
+      mutate(
+        dataset = dataset_name,
+        total_rows = nrow(df),
+        status = case_when(
+          non_missing_count == 0 ~ "Empty",
+          non_missing_count == total_rows ~ "Complete",
+          TRUE ~ "Partly missing"
+        )
+      )
+  }) %>%
+  mutate(status = factor(status, levels = c("Complete", "Partly missing", "Empty")))
+
+availability %>%
+  arrange(dataset, status, field)
+```
+
+```{r field-availability-chart, fig.width=10, fig.height=5.5}
+availability %>%
+  count(dataset, status, name = "field_count") %>%
+  ggplot(aes(dataset, field_count, fill = status)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(values = c(
+    Complete = palette[["green"]],
+    `Partly missing` = palette[["gold"]],
+    Empty = palette[["red"]]
+  )) +
+  labs(
+    title = "Field Availability by Dataset",
+    subtitle = "Empty fields are mostly waiting for source mapping or API recovery",
+    x = NULL, y = "Number of fields", fill = "Status"
+  ) +
+  chart_theme() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+```{r empty-fields}
+availability %>%
+  filter(status == "Empty") %>%
+  select(dataset, field) %>%
+  arrange(dataset, field)
+```
+
+```{r combined-dataset}
+combined <- data$gdp %>%
+  select(-source)
+
+for (name in c("inflation", "inequality", "poverty", "labor", "cost_of_living")) {
+  df <- data[[name]] %>%
+    select(-source)
+
+  duplicate_cols <- intersect(names(df), names(combined)) %>%
+    setdiff("year")
+
+  df <- df %>%
+    select(-any_of(duplicate_cols))
+
+  combined <- combined %>%
+    full_join(df, by = "year")
+}
+
+combined <- combined %>%
+  arrange(year)
+
+combined %>%
+  head()
+```
+
+## Supporting Charts
+
+```{r gdp-growth, fig.width=10, fig.height=5.5}
+data$gdp %>%
+  drop_na(gdp_growth) %>%
+  ggplot(aes(year, gdp_growth)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = palette[["gray"]]) +
+  geom_line(color = palette[["blue"]], linewidth = 1.1) +
+  geom_point(color = palette[["blue"]], size = 1.8) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "GDP Growth, Year over Year",
+    subtitle = "World Bank API, annual percent",
+    x = "Year", y = "GDP growth (%)"
+  ) +
+  chart_theme()
+```
+
+```{r tail-absolute-consumption, fig.width=10, fig.height=5.5}
+tail_consumption <- tail %>%
+  select(year, group, avg_welfare_ppp_daily) %>%
+  drop_na(avg_welfare_ppp_daily)
+
+tail_consumption_labels <- tail_consumption %>%
+  group_by(group) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(first_welfare = first(avg_welfare_ppp_daily)) %>%
+  slice_tail(n = 1) %>%
+  ungroup() %>%
+  mutate(
+    growth_pct = (avg_welfare_ppp_daily / first_welfare - 1) * 100,
+    growth_label = sprintf("+%.0f%%", growth_pct)
+  )
+
+tail_consumption %>%
+  ggplot(aes(year, avg_welfare_ppp_daily, color = group)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  geom_text(
+    data = tail_consumption_labels,
+    aes(label = growth_label),
+    nudge_x = 0.7,
+    hjust = 0,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = c(
+    "Bottom 10%" = palette[["green"]],
+    "Top 10%" = palette[["red"]]
+  )) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title = "Tail Average Consumption",
+    subtitle = "End labels show growth from first available year to final year; 2017 PPP USD per person per day",
+    x = "Year", y = "Daily consumption", color = "Group"
+  ) +
+  chart_theme() +
+  theme(plot.margin = margin(5.5, 60, 5.5, 5.5))
+```
+
+```{r extreme-tail-distribution-shares, fig.width=10, fig.height=5.5}
+extreme_tail <- data$welfare_distribution %>%
+  filter(group %in% c("Bottom 1%", "Top 1%")) %>%
+  mutate(
+    group = factor(group, levels = c("Bottom 1%", "Top 1%")),
+    share = welfare_share * 100
+  ) %>%
+  drop_na(share)
+
+extreme_tail_share_labels <- extreme_tail %>%
+  group_by(group) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(first_share = first(share)) %>%
+  slice_tail(n = 1) %>%
+  ungroup() %>%
+  mutate(
+    growth_pct = (share / first_share - 1) * 100,
+    growth_label = sprintf("%+.0f%%", growth_pct)
+  )
+
+extreme_tail %>%
+  ggplot(aes(year, share, color = group)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  geom_text(
+    data = extreme_tail_share_labels,
+    aes(label = growth_label),
+    nudge_x = 0.7,
+    hjust = 0,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = c(
+    "Bottom 1%" = palette[["green"]],
+    "Top 1%" = palette[["red"]]
+  )) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title = "Extreme Tail Distribution Shares",
+    subtitle = "End labels show growth from first available year to final year; World Bank PIP consumption shares",
+    x = "Year", y = "Share (%)", color = "Group"
+  ) +
+  chart_theme() +
+  theme(plot.margin = margin(5.5, 60, 5.5, 5.5))
+```
+
+```{r gini-index, fig.width=10, fig.height=5.5}
+data$inequality %>%
+  drop_na(gini_ratio) %>%
+  ggplot(aes(year, gini_ratio)) +
+  geom_line(color = palette[["purple"]], linewidth = 1.1) +
+  geom_point(color = palette[["purple"]], size = 1.8) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Gini Index",
+    subtitle = "World Bank API, Indonesia",
+    x = "Year", y = "Gini index"
+  ) +
+  chart_theme()
+```
+
+```{r comparative-inequality-growth, fig.width=10, fig.height=5.8}
+comparative_long <- data$comparative_growth %>%
+  filter(income_level %in% c("Lower middle income", "Upper middle income")) %>%
+  select(
+    country_code, country_name, region, income_level, year, gini,
+    future_5y_growth_pct, future_10y_growth_pct
+  ) %>%
+  pivot_longer(
+    cols = c(future_5y_growth_pct, future_10y_growth_pct),
+    names_to = "horizon",
+    values_to = "future_growth_pct"
+  ) %>%
+  mutate(
+    horizon = recode(
+      horizon,
+      future_5y_growth_pct = "Next 5 years",
+      future_10y_growth_pct = "Next 10 years"
+    ),
+    focus = if_else(country_code == "IDN", "Indonesia", "Other middle-income countries")
+  ) %>%
+  drop_na(gini, future_growth_pct)
+
+comparative_long %>%
+  ggplot(aes(gini, future_growth_pct)) +
+  geom_hline(yintercept = 0, color = palette[["gray"]], linetype = "dashed") +
+  geom_point(
+    data = comparative_long %>% filter(focus != "Indonesia"),
+    color = palette[["gray"]],
+    alpha = 0.28,
+    size = 1.7
+  ) +
+  geom_smooth(
+    data = comparative_long %>% filter(focus != "Indonesia"),
+    method = "lm",
+    formula = y ~ x,
+    se = FALSE,
+    color = palette[["purple"]],
+    linewidth = 1
+  ) +
+  geom_point(
+    data = comparative_long %>% filter(focus == "Indonesia"),
+    color = palette[["red"]],
+    size = 2.4
+  ) +
+  facet_wrap(~ horizon, ncol = 2) +
+  scale_x_continuous(limits = c(20, 65), breaks = seq(20, 65, by = 10)) +
+  labs(
+    title = "Inequality Today and Future Growth",
+    subtitle = "Middle-income country-years; red points highlight Indonesia. Trend line is descriptive, not causal.",
+    x = "Gini index in year t",
+    y = "Annualized future real GDP per-capita growth (%)"
+  ) +
+  chart_theme()
+```
+
+```{r poverty-indicators, fig.width=10, fig.height=5.5}
+poverty_long <- data$poverty %>%
+  select(year, poverty_rate, extreme_poverty_rate) %>%
+  pivot_longer(
+    cols = c(poverty_rate, extreme_poverty_rate),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  drop_na(value) %>%
+  mutate(metric = recode(
+    metric,
+    poverty_rate = "National poverty rate",
+    extreme_poverty_rate = "Extreme poverty rate"
+  ))
+
+poverty_long %>%
+  ggplot(aes(year, value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  scale_color_manual(values = c(palette[["blue"]], palette[["red"]])) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Poverty Indicators",
+    subtitle = "World Bank API, annual percent of population",
+    x = "Year", y = "Population share (%)", color = "Metric"
+  ) +
+  chart_theme()
+```
+
+```{r labor-market, fig.width=10, fig.height=5.5}
+labor_long <- data$labor %>%
+  select(year, unemployment_rate, youth_unemployment, vulnerable_employment_share) %>%
+  pivot_longer(
+    cols = c(unemployment_rate, youth_unemployment, vulnerable_employment_share),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  drop_na(value) %>%
+  mutate(metric = recode(
+    metric,
+    unemployment_rate = "Unemployment",
+    youth_unemployment = "Youth unemployment",
+    vulnerable_employment_share = "Vulnerable employment"
+  ))
+
+labor_long %>%
+  ggplot(aes(year, value, color = metric)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 1.8) +
+  facet_wrap(~ metric, scales = "free_y", ncol = 1) +
+  scale_color_manual(values = c(palette[["blue"]], palette[["red"]], palette[["green"]])) +
+  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  labs(
+    title = "Labor Market Indicators Available Now",
+    subtitle = "Unemployment and vulnerable employment from World Bank",
+    x = "Year", y = "Share (%)", color = "Metric"
+  ) +
+  chart_theme()
+```
+
+```{r rice-price, fig.width=10, fig.height=5.5}
+data$cost_of_living %>%
+  drop_na(rice_price) %>%
+  ggplot(aes(year, rice_price)) +
+  geom_line(color = palette[["green"]], linewidth = 1.1) +
+  geom_point(color = palette[["green"]], size = 1.8) +
+  scale_x_continuous(breaks = seq(2010, 2024, by = 2)) +
+  scale_y_continuous(labels = label_number(big.mark = ",")) +
+  labs(
+    title = "Wholesale Rice Price From BPS",
+    subtitle = "BPS WebAPI variable 295; rupiah per kilogram, annual average",
+    x = "Year", y = "Rupiah per kg"
+  ) +
+  chart_theme()
+```
+
+```{r wage-price-summary}
+data$labor %>%
+  select(year, avg_wage, real_wage_growth) %>%
+  left_join(data$inflation %>% select(year, inflation_yoy), by = "year") %>%
+  filter(year >= 2019, year <= 2023) %>%
+  mutate(
+    nominal_wage_growth = (avg_wage / lag(avg_wage) - 1) * 100,
+    real_wage_growth = round(real_wage_growth, 2),
+    nominal_wage_growth = round(nominal_wage_growth, 2),
+    inflation_yoy = round(inflation_yoy, 2)
+  ) %>%
+  select(year, avg_wage, nominal_wage_growth, inflation_yoy, real_wage_growth)
+```
+
+```{r cost-of-living-missingness, fig.width=10, fig.height=5.5}
+data$cost_of_living %>%
+  select(-any_of(c("year", "source"))) %>%
+  summarise(across(everything(), ~ mean(is.na(.x)))) %>%
+  pivot_longer(everything(), names_to = "field", values_to = "missing_rate") %>%
+  ggplot(aes(missing_rate, field)) +
+  geom_col(fill = palette[["gold"]]) +
+  scale_x_continuous(labels = percent_format()) +
+  labs(
+    title = "Cost-of-Living Field Missingness",
+    subtitle = "Total CPI and BPS wholesale rice price are populated; remaining fields need source mapping",
+    x = "Share of rows missing", y = NULL
+  ) +
+  chart_theme()
+```
