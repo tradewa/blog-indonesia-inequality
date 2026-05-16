@@ -450,53 +450,30 @@ Interpretation:
 
 Inputs:
 
-- `welfare_distribution_indonesia.csv`
+- `labor_indonesia.csv`
 - `prices_indonesia.csv`
 
 Transformation:
 
-1. Build the Middle 40% consumption series from `avg_welfare_ppp_daily`.
-2. Join to `cpi_total`.
-3. Convert Middle 40% real consumption into an implied nominal index:
-
-```r
-real_consumption_index = avg_welfare_ppp_daily / first(avg_welfare_ppp_daily) * 100
-cpi_index = cpi_total / first(cpi_total) * 100
-middle_consumption_nominal_index = real_consumption_index * cpi_index / 100
-```
-
-4. Combine that Middle 40% implied nominal consumption index with BPS category CPI indexes:
+1. Build the national average wage series from `avg_wage`.
+2. Combine that wage series with BPS category CPI indexes:
    - food, beverages, tobacco
    - transport
    - housing, water, electricity, fuel
    - education
    - health
    - restaurants
-5. Rebase every line to 2020=100.
-6. Label each line with cumulative growth from first to last point.
+3. Rebase every line to 2020=100:
+
+```r
+index_start = value / first(value) * 100
+```
+
+4. Label each line at its final observed endpoint with cumulative growth from first to last point.
 
 Interpretation caveat:
 
-- This is not a strict purchasing-power chart. For purchasing power, wages or income should be compared with prices.
-- Comparing consumption with category prices is a welfare-pressure comparison: it shows whether observed consumption growth kept up with the prices of major spending categories.
-
-### `Estimated Labour Income by Decile vs National Average Wage`
-
-Inputs:
-
-- `labour_income_deciles_indonesia.csv`
-- `labor_indonesia.csv`
-
-Transformation:
-
-1. Plot `estimated_avg_monthly_labour_income` by decile.
-2. Join the national `avg_wage` series over the shared years.
-3. Overlay national average wage as a black reference line.
-4. Use a log y-axis so bottom and top deciles are readable on the same chart.
-
-Interpretation caveat:
-
-- This chart is a sanity check for the decile labour-income file. It should not be overinterpreted until the file's ingestion path is formalized and the estimated decile levels are validated.
+- Comparing national average wage with category CPI is a cleaner purchasing-power comparison than comparing consumption with prices. It is still a national average employee wage, not a middle-class-specific wage.
 
 ### Appendix-only charts
 

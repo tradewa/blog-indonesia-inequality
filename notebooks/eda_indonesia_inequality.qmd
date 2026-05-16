@@ -63,7 +63,6 @@ files <- c(
   welfare_distribution = "welfare_distribution_indonesia.csv",
   comparative_growth = "comparative_inequality_growth.csv",
   labor = "labor_indonesia.csv",
-  labour_income_deciles = "labour_income_deciles_indonesia.csv",
   prices = "prices_indonesia.csv"
 )
 
@@ -510,25 +509,19 @@ category_cpi <- data$prices %>%
     cpi_restaurant = "Restaurants"
   ))
 
-middle_consumption_pressure <- data$welfare_distribution %>%
-  filter(
-    group == "Middle 40%",
-    between(year, household_analysis_start_year, household_analysis_end_year)
-  ) %>%
-  select(year, avg_welfare_ppp_daily) %>%
-  left_join(data$prices %>% select(year, cpi_total), by = "year") %>%
+national_wage_pressure <- data$labor %>%
+  filter(between(year, household_analysis_start_year, household_analysis_end_year)) %>%
+  select(year, avg_wage) %>%
   arrange(year) %>%
-  drop_na(avg_welfare_ppp_daily, cpi_total) %>%
+  drop_na(avg_wage) %>%
   mutate(
-    real_consumption_index = avg_welfare_ppp_daily / first(avg_welfare_ppp_daily) * 100,
-    cpi_index = cpi_total / first(cpi_total) * 100,
-    metric = "Middle 40% average consumption",
-    value = real_consumption_index * cpi_index / 100
+    metric = "National average wage",
+    value = avg_wage
   ) %>%
   select(year, metric, value)
 
 price_pressure <- bind_rows(
-  middle_consumption_pressure,
+  national_wage_pressure,
   category_cpi %>%
     transmute(year, metric = category, value = index)
 ) %>%
@@ -537,7 +530,7 @@ price_pressure <- bind_rows(
   mutate(metric = factor(
     metric,
     levels = c(
-      "Middle 40% average consumption",
+      "National average wage",
       "Food, beverages, tobacco",
       "Transport",
       "Housing, water, electricity, fuel",
@@ -551,7 +544,7 @@ price_pressure <- bind_rows(
   mutate(
     base_value = first(value),
     index_start = value / base_value * 100,
-    emphasis = if_else(metric == "Middle 40% average consumption", "highlight", "muted"),
+    emphasis = if_else(metric == "National average wage", "highlight", "muted"),
     line_type = if_else(emphasis == "highlight", "solid", "dashed")
   ) %>%
   ungroup()
@@ -570,17 +563,13 @@ price_pressure_labels <- price_pressure %>%
   ungroup() %>%
   left_join(price_pressure_growth, by = "metric") %>%
   mutate(
-    label_x = household_analysis_end_year + 0.06,
-    label_y = case_when(
-      metric == "Transport" ~ 118.6,
-      metric == "Food, beverages, tobacco" ~ 115.8,
-      metric == "Restaurants" ~ 109.2,
-      metric == "Middle 40% average consumption" ~ 108.1,
-      metric == "Health" ~ 106.6,
-      metric == "Education" ~ 105.7,
-      metric == "Housing, water, electricity, fuel" ~ 104.8,
-      TRUE ~ index_start
+    label_x = case_when(
+      metric == "Health" ~ household_analysis_end_year + 0.76,
+      metric == "Education" ~ household_analysis_end_year + 0.12,
+      metric == "Housing, water, electricity, fuel" ~ household_analysis_end_year + 0.44,
+      TRUE ~ household_analysis_end_year + 0.06
     ),
+    label_y = index_start,
     label = str_glue("{metric}  {percent(growth_pct, accuracy = 0.1)}")
   )
 
@@ -598,11 +587,11 @@ price_pressure %>%
   ) +
   scale_x_continuous(
     breaks = household_analysis_start_year:household_analysis_end_year,
-    limits = c(household_analysis_start_year, household_analysis_end_year + 0.85),
+    limits = c(household_analysis_start_year, household_analysis_end_year + 1.95),
     expand = expansion(mult = c(0.01, 0.01))
   ) +
   scale_color_manual(values = c(
-    "Middle 40% average consumption" = palette[["blue"]],
+    "National average wage" = palette[["blue"]],
     "Food, beverages, tobacco" = palette[["green"]],
     "Transport" = palette[["gold"]],
     "Housing, water, electricity, fuel" = palette[["purple"]],
@@ -618,98 +607,14 @@ price_pressure %>%
   ) +
   labs(
     title = "How Prices Move From a Household Starting Point",
-    subtitle = str_glue("Middle 40% consumption is an implied nominal index; each series rebased to {household_analysis_start_year} = 100 and shown through {household_analysis_end_year}."),
+    subtitle = str_glue("National average wage and category CPI series rebased to {household_analysis_start_year} = 100 and shown through {household_analysis_end_year}."),
     x = "Year", y = "Index, first available = 100", color = "Series"
   ) +
   coord_cartesian(clip = "off") +
   chart_theme() +
   theme(
     legend.position = "none",
-    plot.margin = margin(5.5, 95, 5.5, 5.5)
-  )
-```
-
-## Estimated Labour Income Deciles
-
-```{r labour-income-deciles-vs-national-wage, fig.width=10, fig.height=6}
-labour_income_decile_levels <- c(
-  "0 - 10%", "11 - 20%", "21 - 30%", "31 - 40%", "41 - 50%",
-  "51 - 60%", "61 - 70%", "71 - 80%", "81 - 90%", "91 - 100%"
-)
-
-labour_income_deciles <- data$labour_income_deciles %>%
-  mutate(decile = factor(decile, levels = labour_income_decile_levels)) %>%
-  drop_na(estimated_avg_monthly_labour_income)
-
-national_wage_comparison <- data$labor %>%
-  select(year, avg_wage) %>%
-  inner_join(
-    labour_income_deciles %>%
-      distinct(year),
-    by = "year"
-  ) %>%
-  drop_na(avg_wage)
-
-labour_income_decile_labels <- labour_income_deciles %>%
-  group_by(decile) %>%
-  slice_max(year, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  mutate(
-    label_x = year + 0.35,
-    label_y = estimated_avg_monthly_labour_income,
-    label = as.character(decile)
-  )
-
-national_wage_label <- national_wage_comparison %>%
-  slice_max(year, n = 1, with_ties = FALSE) %>%
-  mutate(
-    label_x = year + 0.35,
-    label_y = avg_wage * 0.9,
-    label = "National average wage"
-  )
-
-labour_income_deciles %>%
-  ggplot(aes(year, estimated_avg_monthly_labour_income, color = decile)) +
-  geom_line(linewidth = 0.85, alpha = 0.86) +
-  geom_line(
-    data = national_wage_comparison,
-    aes(year, avg_wage),
-    inherit.aes = FALSE,
-    color = palette[["dark"]],
-    linewidth = 1.15
-  ) +
-  geom_text(
-    data = labour_income_decile_labels,
-    aes(x = label_x, y = label_y, label = label, color = decile),
-    hjust = 0,
-    size = 2.8,
-    show.legend = FALSE
-  ) +
-  geom_text(
-    data = national_wage_label,
-    aes(x = label_x, y = label_y, label = label),
-    inherit.aes = FALSE,
-    hjust = 0,
-    size = 3,
-    color = palette[["dark"]]
-  ) +
-  scale_color_manual(values = set_names(hcl.colors(length(labour_income_decile_levels), palette = "Dark 3"), labour_income_decile_levels)) +
-  scale_y_log10(labels = label_number(scale_cut = cut_short_scale(), prefix = "Rp ")) +
-  scale_x_continuous(
-    breaks = seq(min(labour_income_deciles$year), max(labour_income_deciles$year), by = 3),
-    limits = c(min(labour_income_deciles$year), max(labour_income_deciles$year) + 2.9),
-    expand = expansion(mult = c(0.01, 0.01))
-  ) +
-  labs(
-    title = "Estimated Labour Income by Decile vs National Average Wage",
-    subtitle = "ILOSTAT labour-income shares by decile scaled by national average monthly earnings; log scale for readability.",
-    x = "Year", y = "Monthly rupiah, log scale", color = "Decile"
-  ) +
-  coord_cartesian(clip = "off") +
-  chart_theme() +
-  theme(
-    legend.position = "none",
-    plot.margin = margin(5.5, 135, 5.5, 5.5)
+    plot.margin = margin(5.5, 20, 5.5, 5.5)
   )
 ```
 
