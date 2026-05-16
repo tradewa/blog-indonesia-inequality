@@ -217,7 +217,7 @@ pip_percentiles <- read_csv(
 
 latest_available_consumption_year <- max(pip_percentiles$year, na.rm = TRUE)
 consumption_start_year <- 2020
-consumption_end_year <- min(latest_available_consumption_year, 2024)
+consumption_end_year <- min(latest_available_consumption_year, 2023)
 
 ppp_base_year <- 2017
 
@@ -446,7 +446,7 @@ ineq_long %>%
 ```
 
 ```{r lower-income-welfare-price-pressure, fig.width=9, fig.height=5}
-decile_consumption %>%
+decile_consumption_growth <- decile_consumption %>%
   group_by(decile) %>%
   arrange(year, .by_group = TRUE) %>%
   summarise(
@@ -459,12 +459,47 @@ decile_consumption %>%
     latest_consumption_rupiah = latest_consumption * latest_price_conversion,
     consumption_label = str_glue("Rp {number(latest_consumption_rupiah, accuracy = 100, big.mark = ',')} / day"),
     label_vjust = if_else(growth >= 0, -0.35, 1.25)
+  )
+
+national_consumption_growth <- pip_percentiles %>%
+  filter(between(year, consumption_start_year, consumption_end_year)) %>%
+  drop_na(avg_welfare, pop_share) %>%
+  group_by(year) %>%
+  summarise(
+    avg_consumption = weighted.mean(avg_welfare, pop_share),
+    .groups = "drop"
   ) %>%
+  arrange(year) %>%
+  summarise(growth = last(avg_consumption) / first(avg_consumption) - 1) %>%
+  pull(growth)
+
+national_consumption_growth_label <- tibble(
+  decile = factor(decile_levels[length(decile_levels)], levels = decile_levels),
+  growth = national_consumption_growth,
+  label = str_glue("National average: {percent(national_consumption_growth, accuracy = 1)}")
+)
+
+decile_consumption_growth %>%
   ggplot(aes(decile, growth)) +
-  geom_hline(yintercept = 0, color = palette[["gray"]], linetype = "dashed") +
+  geom_hline(yintercept = 0, color = palette[["gray"]], linewidth = 0.35) +
+  geom_hline(
+    yintercept = national_consumption_growth,
+    color = palette[["blue"]],
+    linetype = "dashed",
+    linewidth = 0.7
+  ) +
   geom_col(fill = palette[["green"]], width = 0.72) +
   geom_text(
     aes(label = consumption_label, vjust = label_vjust),
+    size = 3
+  ) +
+  geom_text(
+    data = national_consumption_growth_label,
+    aes(x = decile, y = growth, label = label),
+    inherit.aes = FALSE,
+    hjust = 1,
+    vjust = -0.55,
+    color = palette[["blue"]],
     size = 3
   ) +
   scale_y_continuous(
@@ -481,6 +516,91 @@ decile_consumption %>%
   theme(
     axis.text.x = element_text(angle = 35, hjust = 1),
     legend.position = "none"
+  )
+```
+
+```{r decile-wage-price-pressure, fig.width=9, fig.height=5}
+labour_income_deciles <- read_processed_csv("labour_income_deciles_indonesia.csv") %>%
+  mutate(decile = factor(decile, levels = decile_levels))
+
+wage_decile_start_year <- 2020
+wage_decile_end_year <- min(
+  max(labour_income_deciles$year, na.rm = TRUE),
+  max(data$prices$year[!is.na(data$prices$cpi_total)], na.rm = TRUE)
+)
+
+cpi_growth <- data$prices %>%
+  filter(between(year, wage_decile_start_year, wage_decile_end_year)) %>%
+  arrange(year) %>%
+  drop_na(cpi_total) %>%
+  summarise(growth = last(cpi_total) / first(cpi_total) - 1) %>%
+  pull(growth)
+
+decile_wage_growth <- labour_income_deciles %>%
+  filter(between(year, wage_decile_start_year, wage_decile_end_year)) %>%
+  drop_na(decile, estimated_avg_monthly_labour_income) %>%
+  group_by(decile) %>%
+  arrange(year, .by_group = TRUE) %>%
+  summarise(
+    wage_start = first(estimated_avg_monthly_labour_income),
+    latest_wage = last(estimated_avg_monthly_labour_income),
+    growth = latest_wage / wage_start - 1,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    wage_label = str_glue("Rp {number(latest_wage / 1000, accuracy = 1, big.mark = ',')}K / month"),
+    label_vjust = if_else(growth >= 0, -0.35, 1.25),
+    inflation_gap = growth - cpi_growth,
+    pressure = if_else(inflation_gap >= 0, "Kept pace with CPI", "Below CPI")
+  )
+
+cpi_growth_label <- tibble(
+  decile = factor(decile_levels[length(decile_levels)], levels = decile_levels),
+  growth = cpi_growth,
+  label = str_glue("CPI increase: {percent(cpi_growth, accuracy = 1)}")
+)
+
+decile_wage_growth %>%
+  ggplot(aes(decile, growth)) +
+  geom_hline(yintercept = 0, color = palette[["gray"]], linewidth = 0.35) +
+  geom_hline(
+    yintercept = cpi_growth,
+    color = palette[["red"]],
+    linetype = "dashed",
+    linewidth = 0.7
+  ) +
+  geom_col(aes(fill = pressure), width = 0.72) +
+  geom_text(
+    aes(label = wage_label, vjust = label_vjust),
+    size = 3
+  ) +
+  geom_text(
+    data = cpi_growth_label,
+    aes(x = decile, y = growth, label = label),
+    inherit.aes = FALSE,
+    hjust = 1,
+    vjust = -0.55,
+    color = palette[["red"]],
+    size = 3
+  ) +
+  scale_fill_manual(values = c(
+    "Kept pace with CPI" = palette[["green"]],
+    "Below CPI" = palette[["red"]]
+  )) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0.08, 0.14))
+  ) +
+  labs(
+    title = "Average Wage Growth by Decile",
+    subtitle = str_glue("Bar height shows {wage_decile_start_year}-{wage_decile_end_year} growth in estimated average monthly labour income; dashed line shows total CPI growth."),
+    x = "Population decile", y = "Wage growth",
+    caption = "Labels show latest estimated average monthly labour income. Decile estimates combine ILOSTAT labour income shares by decile with national average monthly earnings."
+  ) +
+  chart_theme() +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    legend.title = element_blank()
   )
 ```
 
@@ -520,8 +640,20 @@ national_wage_pressure <- data$labor %>%
   ) %>%
   select(year, metric, value)
 
+total_cpi_pressure <- data$prices %>%
+  filter(between(year, household_analysis_start_year, household_analysis_end_year)) %>%
+  select(year, cpi_total) %>%
+  arrange(year) %>%
+  drop_na(cpi_total) %>%
+  mutate(
+    metric = "Total CPI",
+    value = cpi_total
+  ) %>%
+  select(year, metric, value)
+
 price_pressure <- bind_rows(
   national_wage_pressure,
+  total_cpi_pressure,
   category_cpi %>%
     transmute(year, metric = category, value = index)
 ) %>%
@@ -531,6 +663,7 @@ price_pressure <- bind_rows(
     metric,
     levels = c(
       "National average wage",
+      "Total CPI",
       "Food, beverages, tobacco",
       "Transport",
       "Housing, water, electricity, fuel",
@@ -544,7 +677,7 @@ price_pressure <- bind_rows(
   mutate(
     base_value = first(value),
     index_start = value / base_value * 100,
-    emphasis = if_else(metric == "National average wage", "highlight", "muted"),
+    emphasis = if_else(metric %in% c("National average wage", "Total CPI"), "highlight", "muted"),
     line_type = if_else(emphasis == "highlight", "solid", "dashed")
   ) %>%
   ungroup()
@@ -563,13 +696,12 @@ price_pressure_labels <- price_pressure %>%
   ungroup() %>%
   left_join(price_pressure_growth, by = "metric") %>%
   mutate(
-    label_x = case_when(
-      metric == "Health" ~ household_analysis_end_year + 0.76,
-      metric == "Education" ~ household_analysis_end_year + 0.12,
-      metric == "Housing, water, electricity, fuel" ~ household_analysis_end_year + 0.44,
-      TRUE ~ household_analysis_end_year + 0.06
+    label_x = household_analysis_end_year + 0.12,
+    label_y = case_when(
+      metric == "Total CPI" ~ index_start + 0.75,
+      metric == "National average wage" ~ index_start - 0.25,
+      TRUE ~ index_start
     ),
-    label_y = index_start,
     label = str_glue("{metric}  {percent(growth_pct, accuracy = 0.1)}")
   )
 
@@ -592,6 +724,7 @@ price_pressure %>%
   ) +
   scale_color_manual(values = c(
     "National average wage" = palette[["blue"]],
+    "Total CPI" = palette[["red"]],
     "Food, beverages, tobacco" = palette[["green"]],
     "Transport" = palette[["gold"]],
     "Housing, water, electricity, fuel" = palette[["purple"]],
@@ -607,7 +740,7 @@ price_pressure %>%
   ) +
   labs(
     title = "How Prices Move From a Household Starting Point",
-    subtitle = str_glue("National average wage and category CPI series rebased to {household_analysis_start_year} = 100 and shown through {household_analysis_end_year}."),
+    subtitle = str_glue("National average wage, total CPI, and category CPI series rebased to {household_analysis_start_year} = 100 and shown through {household_analysis_end_year}."),
     x = "Year", y = "Index, first available = 100", color = "Series"
   ) +
   coord_cartesian(clip = "off") +
