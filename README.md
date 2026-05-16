@@ -68,14 +68,13 @@ reports/
 scripts/
   common.py                    Shared fetch, clean, and CSV helpers
   download_all.py              Runs all supported download scripts
-  download_cost_of_living.py
   download_gdp.py
-  download_inflation.py
   download_inequality.py
   download_welfare_distribution.py
   download_comparative_growth_inequality.py
   download_labor.py
-  download_poverty.py
+  download_labour_income_deciles.py
+  build_prices.py              Builds the combined CPI and cost-of-living file
   discover_bps_sources.py      Scans BPS subject-variable metadata
 README.md
 agent.md                       Handoff notes for future work
@@ -106,13 +105,12 @@ Run individual datasets:
 
 ```bash
 .venv/bin/python scripts/download_gdp.py
-.venv/bin/python scripts/download_inflation.py
 .venv/bin/python scripts/download_inequality.py
 .venv/bin/python scripts/download_welfare_distribution.py
 .venv/bin/python scripts/download_comparative_growth_inequality.py
-.venv/bin/python scripts/download_poverty.py
 .venv/bin/python scripts/download_labor.py
-.venv/bin/python scripts/download_cost_of_living.py
+.venv/bin/python scripts/download_labour_income_deciles.py
+.venv/bin/python scripts/build_prices.py
 ```
 
 Run BPS source discovery separately:
@@ -160,7 +158,7 @@ This README and the source code are enough to reproduce the current pipeline fro
 
 World Bank API is the main working source for the baseline annual country-level pipeline because it provides stable Indonesia (`IDN`) indicators without an API key.
 
-BPS is still the preferred source for Indonesia-specific fields such as detailed CPI categories, commodity prices, administered prices, wages, and informal employment. The current working BPS route is subject-variable discovery through `model=var` plus direct data downloads through `model=data`. Total CPI uses the World Bank's continuous annual Indonesia CPI series for the full 2000-2024 horizon. The mapped BPS category CPI variables use the 2018=100 category taxonomy, which is source-backed from 2020 rather than stitched to older BPS base years and category groupings. The cost-of-living script uses BPS variable `295` for Indonesia wholesale rice prices.
+BPS is still the preferred source for Indonesia-specific fields such as detailed CPI categories, commodity prices, administered prices, and wages. The current working BPS route is subject-variable discovery through `model=var` plus direct data downloads through `model=data`. Total CPI uses the World Bank's continuous annual Indonesia CPI series for the full 2000-2024 horizon. The mapped BPS category CPI variables use the 2018=100 category taxonomy, which is source-backed from 2020 rather than stitched to older BPS base years and category groupings. The price builder uses BPS variable `295` for Indonesia wholesale rice prices.
 
 ## Processed Data
 
@@ -201,16 +199,20 @@ Columns:
 - `ppp_private_consumption`: rupiah per international dollar for private consumption, used to convert PIP PPP consumption labels into approximate current rupiah amounts.
 - `source`: data source.
 
-### `data/processed/inflation_indonesia.csv`
+### `data/processed/prices_indonesia.csv`
 
-Annual CPI and inflation indicators. Total CPI and annual inflation are populated from the World Bank. Category CPI columns are populated from BPS WebAPI where available.
+Combined annual price table used by the notebooks. It contains total CPI, inflation, BPS category CPI fields, BPS wholesale rice price, and reserved cost-of-living fields in one file.
+
+Built by:
+
+- `scripts/build_prices.py`
 
 World Bank indicators:
 
 - `FP.CPI.TOTL`: consumer price index
 - `FP.CPI.TOTL.ZG`: inflation, consumer prices, annual %
 
-BPS category CPI variables:
+BPS variables:
 
 - `1905`: foods, beverages, and tobacco CPI, 2018=100
 - `1907`: housing, water, electricity, and household fuel CPI, 2018=100
@@ -218,19 +220,22 @@ BPS category CPI variables:
 - `1910`: transportation CPI, 2018=100
 - `1913`: education CPI, 2018=100
 - `1915`: provision of food and beverages / restaurant CPI, 2018=100
+- `295`: Indonesia wholesale rice price
 
 Columns:
 
 - `year`: calendar year.
 - `cpi_total`: consumer price index, total.
 - `inflation_yoy`: annual consumer price inflation, in percent.
-- `cpi_food`: BPS national December CPI index for foods, beverages, and tobacco. Currently populated for 2020-2023 using the 2018=100 base.
-- `cpi_transport`: BPS national December CPI index for transportation. Currently populated for 2020-2023 using the 2018=100 base.
-- `cpi_housing`: BPS national December CPI index for housing, water, electricity, and household fuel. Currently populated for 2020-2023 using the 2018=100 base.
-- `cpi_education`: BPS national December CPI index for education. Currently populated for 2020-2023 using the 2018=100 base.
-- `cpi_healthcare`: BPS national December CPI index for health. Currently populated for 2020-2023 using the 2018=100 base.
-- `cpi_restaurant`: BPS national December CPI index for provision of food and beverages / restaurant. Currently populated for 2020-2023 using the 2018=100 base.
-- `source`: data source.
+- `cpi_food`: BPS national December CPI index for foods, beverages, and tobacco.
+- `cpi_transport`: BPS national December CPI index for transportation.
+- `cpi_housing`: BPS national December CPI index for housing, water, electricity, and household fuel.
+- `cpi_education`: BPS national December CPI index for education.
+- `cpi_healthcare`: BPS national December CPI index for health.
+- `cpi_restaurant`: BPS national December CPI index for provision of food and beverages / restaurant.
+- `rice_price`: wholesale rice price in rupiah per kilogram from BPS WebAPI variable `295`.
+- `fuel_price`, `electricity_index`, `rent_index`, `education_index`, `healthcare_index`, `restaurant_index`: reserved cost-of-living fields pending source-backed mapping.
+- `source`: data source and limitation notes.
 
 ### `data/processed/inequality_indonesia.csv`
 
@@ -311,31 +316,9 @@ Columns:
 - `future_10y_end_year`: end year used for the 10-year growth calculation.
 - `source`: data source note.
 
-### `data/processed/poverty_indonesia.csv`
-
-Annual poverty indicators from the World Bank.
-
-World Bank indicators:
-
-- `SI.POV.NAHC`: poverty headcount ratio at national poverty lines
-- `SI.POV.DDAY`: poverty headcount ratio at $2.15/day, 2017 PPP
-
-Columns:
-
-- `year`: calendar year.
-- `poverty_rate`: poverty headcount ratio at national poverty lines, in percent of the population.
-- `extreme_poverty_rate`: poverty headcount ratio at $2.15/day, 2017 PPP, in percent of the population.
-- `source`: data source.
-
 ### `data/processed/labor_indonesia.csv`
 
-Annual labor-market indicators. Unemployment and vulnerable employment are populated from the World Bank. Average monthly earnings are populated from ILOSTAT. Real wage growth is retained as a derived field for table checks, calculated by deflating those earnings with World Bank total CPI.
-
-World Bank indicators:
-
-- `SL.UEM.TOTL.ZS`: unemployment, total
-- `SL.UEM.1524.ZS`: unemployment, youth total ages 15-24
-- `SL.EMP.VULN.ZS`: vulnerable employment, total
+Annual wage file. Average monthly earnings are populated from ILOSTAT. Real wage growth is retained as a derived field for table checks, calculated by deflating those earnings with World Bank total CPI.
 
 ILOSTAT indicator:
 
@@ -344,34 +327,30 @@ ILOSTAT indicator:
 Columns:
 
 - `year`: calendar year.
-- `unemployment_rate`: total unemployment rate, in percent of the labor force.
-- `youth_unemployment`: unemployment rate for ages 15-24, in percent of the youth labor force.
 - `avg_wage`: average monthly earnings of employees, in nominal rupiah, from ILOSTAT. Available through 2023 in the current processed output.
 - `real_wage_growth`: annual real wage growth, in percent, calculated from `avg_wage / cpi_total`.
-- `informal_employment_share`: informal employment share. Currently blank until a BPS or ILOSTAT source is mapped.
-- `vulnerable_employment_share`: vulnerable employment share, in percent of total employment. This is related to informal work but is not a direct substitute for informal employment.
-- `source`: data source and follow-up note for remaining blank fields.
+- `source`: data source.
 
-### `data/processed/cost_of_living_indonesia.csv`
+### `data/processed/labour_income_deciles_indonesia.csv`
 
-Annual real-life cost indicator schema. Total CPI is populated from the World Bank. Wholesale rice price is populated from BPS WebAPI variable `295` where available. Other item and category fields are reserved for future BPS-backed data.
+Estimated monthly labour income by decile. The script downloads ILOSTAT labour-income shares by decile and scales each decile share by the national average monthly earnings already stored in `labor_indonesia.csv`.
 
-World Bank indicator:
+Built by:
 
-- `FP.CPI.TOTL`: consumer price index
+- `scripts/download_labour_income_deciles.py`
+
+ILOSTAT indicator:
+
+- `LAP_2LID_QTL_RT`: labour income distribution by decile
 
 Columns:
 
 - `year`: calendar year.
-- `rice_price`: wholesale rice price in rupiah per kilogram from BPS WebAPI variable `295`, available for 2010-2024 in the current processed output.
-- `fuel_price`: fuel price. Currently blank until an official source is mapped.
-- `electricity_index`: electricity, gas, or utilities price index. Currently blank until a BPS source is mapped.
-- `rent_index`: rent or housing cost index. Currently blank until a BPS source is mapped.
-- `education_index`: education cost index. Currently blank until a BPS source is mapped.
-- `healthcare_index`: healthcare cost index. Currently blank until a BPS source is mapped.
-- `restaurant_index`: restaurant or eating-out cost index. Currently blank until a BPS source is mapped.
-- `cpi_total`: consumer price index, total.
-- `source`: data source and follow-up note for remaining blank fields.
+- `decile`: population decile.
+- `labour_income_share_pct`: decile share of total labour income, in percent.
+- `avg_wage`: national average monthly earnings of employees, in nominal rupiah.
+- `estimated_avg_monthly_labour_income`: estimated monthly labour income for the decile, calculated as `avg_wage * labour_income_share_pct / 10`.
+- `source`: data source and scaling note.
 
 ## BPS API Status
 
@@ -393,7 +372,7 @@ It saves raw variable-list responses such as:
 - `data/raw/bps_var_subject_20_page1.json`
 - `data/raw/bps_var_subject_23_page1.json`
 
-The older `model=dynamictable` endpoint currently returns `Model dynamictable is not recognized`, so the repo no longer relies on it. Direct BPS data endpoints work when a variable ID is known. For example, `scripts/download_inflation.py` downloads BPS CPI category variables in chunks, and `scripts/download_cost_of_living.py` downloads BPS variable `295` in three-year chunks.
+The older `model=dynamictable` endpoint currently returns `Model dynamictable is not recognized`, so the repo no longer relies on it. Direct BPS data endpoints work when a variable ID is known. For example, `scripts/build_prices.py` downloads BPS CPI category variables in chunks and BPS variable `295` in three-year chunks.
 
 ## Notebook
 
@@ -425,8 +404,6 @@ Use official BPS portals, BPS API metadata, ILOSTAT, or another official reprodu
 - retail rice price or other food commodity prices beyond the currently mapped BPS wholesale rice series
 - administered fuel, electricity, or LPG price series
 - rent or housing cost index
-- wage or average wage annual series
-- informal employment share
 - BPS/SUSENAS expenditure distribution validation against World Bank PIP percentile aggregates
 
 After stable source IDs are confirmed, add source-specific download scripts that save raw data to `data/raw/` and write yearly outputs to the existing CSV schemas in `data/processed/`.

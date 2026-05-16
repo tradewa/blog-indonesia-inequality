@@ -7,13 +7,12 @@ from pathlib import Path
 
 SCRIPTS = [
     "download_gdp.py",
-    "download_inflation.py",
     "download_inequality.py",
     "download_welfare_distribution.py",
     "download_comparative_growth_inequality.py",
-    "download_poverty.py",
     "download_labor.py",
-    "download_cost_of_living.py",
+    "download_labour_income_deciles.py",
+    "build_prices.py",
 ]
 
 

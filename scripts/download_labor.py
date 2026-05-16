@@ -17,12 +17,6 @@ from common import (
 )
 
 
-INDICATORS = {
-    "unemployment_rate": "SL.UEM.TOTL.ZS",
-    "youth_unemployment": "SL.UEM.1524.ZS",
-    "vulnerable_employment_share": "SL.EMP.VULN.ZS",
-}
-
 DEFLATOR_INDICATORS = {
     "cpi_total": "FP.CPI.TOTL",
 }
@@ -34,12 +28,8 @@ ILOSTAT_WAGE_URL = (
 
 FIELDS = [
     "year",
-    "unemployment_rate",
-    "youth_unemployment",
     "avg_wage",
     "real_wage_growth",
-    "informal_employment_share",
-    "vulnerable_employment_share",
     "source",
 ]
 
@@ -91,15 +81,10 @@ def calculate_real_wage_growth(
 
 
 if __name__ == "__main__":
-    labor_data = fetch_world_bank_indicators(INDICATORS, "worldbank_labor")
     deflator_data = fetch_world_bank_indicators(DEFLATOR_INDICATORS, "worldbank_labor_deflator")
     avg_wage = fetch_ilostat_average_monthly_earnings()
     real_wage_growth = calculate_real_wage_growth(avg_wage, deflator_data["cpi_total"])
     rows_by_year = year_rows()
-
-    for column, values in labor_data.items():
-        for year, value in values.items():
-            rows_by_year[year][column] = value
 
     for year, value in avg_wage.items():
         rows_by_year[year]["avg_wage"] = value
@@ -109,7 +94,6 @@ if __name__ == "__main__":
 
     for row in rows_by_year.values():
         row["source"] = (
-            "World Bank API for unemployment and vulnerable employment; "
             "ILOSTAT EAR_EMTA_SEX_NB_A for average monthly earnings of employees; "
             "World Bank CPI total used to calculate real wage growth"
         )

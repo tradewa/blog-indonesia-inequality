@@ -59,13 +59,12 @@ read_processed_csv <- function(filename) {
 ```{r load-data}
 files <- c(
   gdp = "gdp_indonesia.csv",
-  inflation = "inflation_indonesia.csv",
   inequality = "inequality_indonesia.csv",
   welfare_distribution = "welfare_distribution_indonesia.csv",
   comparative_growth = "comparative_inequality_growth.csv",
-  poverty = "poverty_indonesia.csv",
   labor = "labor_indonesia.csv",
-  cost_of_living = "cost_of_living_indonesia.csv"
+  labour_income_deciles = "labour_income_deciles_indonesia.csv",
+  prices = "prices_indonesia.csv"
 )
 
 data <- files %>%
@@ -79,123 +78,332 @@ indonesia_data <- data[names(data) != "comparative_growth"]
 
 The storyline is: Indonesia is perceived as increasingly unequal, real GDP per capita has risen, average consumption improved across broad groups, but the distribution of gains shifted toward higher-income groups. The final section asks whether households feel better off once wages are compared with prices.
 
-## Indonesia's Relative Inequality Position
-
-```{r comparative-gini-position, fig.width=10, fig.height=6}
-comparison_countries <- tibble(
-  country_code = c(
-    "IDN", "VNM", "THA", "MYS", "PHL", "CHN", "IND",
-    "BRA", "MEX", "CHL",
-    "JPN", "KOR", "DEU", "FRA", "AUS", "USA"
-  ),
-  country_label = c(
-    "Indonesia", "Vietnam", "Thailand", "Malaysia", "Philippines", "China", "India",
-    "Brazil", "Mexico", "Chile",
-    "Japan", "South Korea", "Germany", "France", "Australia", "United States"
-  ),
-  comparison_group = c(
-    rep("Asian peers", 7),
-    rep("High-inequality emerging references", 3),
-    rep("Advanced-country benchmarks", 6)
-  )
-)
-
-latest_gini_comparison <- data$comparative_growth %>%
-  inner_join(comparison_countries, by = "country_code") %>%
-  drop_na(gini) %>%
-  group_by(country_code) %>%
-  slice_max(year, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  mutate(
-    country_label = reorder(country_label, gini),
-    is_indonesia = country_code == "IDN",
-    label = paste0(round(gini, 1), " (", year, ")")
-  )
-
-latest_gini_comparison %>%
-  ggplot(aes(country_label, gini, fill = is_indonesia)) +
-  geom_col(width = 0.72) +
-  geom_text(aes(label = label), hjust = -0.08, size = 3) +
-  coord_flip() +
-  facet_wrap(~ comparison_group, scales = "free_y", ncol = 1) +
-  scale_fill_manual(values = c(`FALSE` = palette[["gray"]], `TRUE` = palette[["red"]])) +
-  scale_y_continuous(limits = c(0, 62), breaks = seq(0, 60, by = 10)) +
-  labs(
-    title = "Latest Available Gini Index: Indonesia and Comparator Countries",
-    subtitle = "World Bank; labels show Gini value and observation year. Higher Gini means higher measured inequality.",
-    x = NULL, y = "Gini index"
-  ) +
-  chart_theme() +
-  theme(legend.position = "none")
-```
-
 ## Real GDP Per Capita
 
 ```{r gdp-per-capita, fig.width=10, fig.height=5.5}
-data$gdp %>%
+gdp_per_capita <- data$gdp %>%
   drop_na(real_gdp_per_capita_lcu) %>%
+  arrange(year)
+
+gdp_per_capita_label <- gdp_per_capita %>%
+  mutate(first_gdp_per_capita = first(real_gdp_per_capita_lcu)) %>%
+  slice_tail(n = 1) %>%
+  mutate(
+    label_x = year + 0.45,
+    growth_label = str_glue("+{percent(real_gdp_per_capita_lcu / first_gdp_per_capita - 1, accuracy = 1)}")
+  )
+
+gdp_per_capita %>%
   ggplot(aes(year, real_gdp_per_capita_lcu)) +
   geom_line(linewidth = 1.1) +
   geom_point(size = 1.8) +
+  geom_text(
+    data = gdp_per_capita_label,
+    aes(x = label_x, label = growth_label),
+    hjust = 0,
+    size = 3.2
+  ) +
   scale_y_continuous(labels = label_number(scale_cut = cut_short_scale())) +
-  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
+  scale_x_continuous(
+    breaks = seq(2000, 2024, by = 5),
+    limits = c(2000, 2025.5),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
   labs(
     title = "Real GDP per Capita",
     subtitle = "World Bank API, constant local currency; price effects already removed",
     x = "Year", y = "Constant Indonesian rupiah"
   ) +
-  chart_theme()
+  coord_cartesian(clip = "off") +
+  chart_theme() +
+  theme(plot.margin = margin(5.5, 55, 5.5, 5.5))
 ```
 
-## Average Consumption By Population Group
+## Nominal Wages, Prices, And Purchasing Power
 
-```{r group-consumption, fig.width=10, fig.height=6}
-broad_groups <- c("Bottom 40%", "Middle 40%", "Top 20%")
+```{r wage-vs-cpi-index, fig.width=10, fig.height=5.5}
+wage_price_start_year <- 2000
 
-group_consumption <- data$welfare_distribution %>%
-  filter(group %in% broad_groups) %>%
-  mutate(group = factor(group, levels = broad_groups)) %>%
-  drop_na(avg_welfare_ppp_daily)
+wage_price_index <- data$labor %>%
+  select(year, avg_wage) %>%
+  left_join(data$prices %>% select(year, cpi_total), by = "year") %>%
+  filter(year >= wage_price_start_year) %>%
+  drop_na(avg_wage, cpi_total) %>%
+  mutate(real_wage = avg_wage / cpi_total * 100) %>%
+  mutate(
+    nominal_wage_index = avg_wage / first(avg_wage) * 100,
+    cpi_index = cpi_total / first(cpi_total) * 100,
+    real_wage_index = real_wage / first(real_wage) * 100
+  ) %>%
+  select(year, nominal_wage_index, cpi_index, real_wage_index) %>%
+  pivot_longer(
+    cols = ends_with("_index"),
+    names_to = "metric",
+    values_to = "index"
+  ) %>%
+  mutate(metric = recode(
+    metric,
+    nominal_wage_index = "Nominal wage",
+    cpi_index = "Consumer prices",
+    real_wage_index = "Real wage"
+  ))
 
-group_consumption_labels <- group_consumption %>%
-  group_by(group) %>%
+wage_price_index_labels <- wage_price_index %>%
+  group_by(metric) %>%
   arrange(year, .by_group = TRUE) %>%
-  mutate(first_welfare = first(avg_welfare_ppp_daily)) %>%
   slice_tail(n = 1) %>%
   ungroup() %>%
   mutate(
-    growth_pct = (avg_welfare_ppp_daily / first_welfare - 1) * 100,
-    growth_label = sprintf("+%.0f%%", growth_pct)
+    label_x = year + 0.28,
+    label_y = case_when(
+      metric == "Nominal wage" ~ index + 8,
+      metric == "Consumer prices" ~ index - 2,
+      metric == "Real wage" ~ index - 2,
+      TRUE ~ index
+    ),
+    label = str_glue("{metric}  +{percent(index / 100 - 1, accuracy = 1)}")
   )
 
-group_consumption %>%
-  ggplot(aes(year, avg_welfare_ppp_daily, color = group)) +
+wage_price_index %>%
+  ggplot(aes(year, index, color = metric)) +
+  geom_hline(yintercept = 100, color = palette[["gray"]], linetype = "dashed") +
   geom_line(linewidth = 1.1) +
   geom_point(size = 1.8) +
   geom_text(
-    data = group_consumption_labels,
-    aes(label = growth_label),
-    nudge_x = 0.7,
+    data = wage_price_index_labels,
+    aes(x = label_x, y = label_y, label = label, color = metric),
     hjust = 0,
+    size = 3,
     show.legend = FALSE
   ) +
-  facet_wrap(~ group, scales = "free_y", ncol = 3) +
-  scale_color_manual(values = c(palette[["green"]], palette[["blue"]], palette[["red"]])) +
-  scale_y_continuous(labels = label_number(scale_cut = cut_short_scale())) +
-  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
-  coord_cartesian(clip = "off") +
-  labs(
-    title = "Average Consumption by Population Group",
-    subtitle = "End labels show growth from first available year to final year; 2017 PPP USD per person per day",
-    x = "Year", y = "Daily consumption", color = "Group"
+  scale_color_manual(values = c(
+    "Nominal wage" = palette[["blue"]],
+    "Consumer prices" = palette[["red"]],
+    "Real wage" = palette[["green"]]
+  )) +
+  scale_x_continuous(
+    breaks = seq(wage_price_start_year, 2024, by = 4),
+    limits = c(wage_price_start_year, 2026.3),
+    expand = expansion(mult = c(0.01, 0.01))
   ) +
+  labs(
+    title = "Nominal Wages, Prices, and Purchasing Power",
+    subtitle = str_glue("Indexed to {wage_price_start_year} = 100; real wage is nominal wage divided by CPI"),
+    x = "Year", y = str_glue("Index, {wage_price_start_year} = 100"), color = "Metric"
+  ) +
+  coord_cartesian(clip = "off") +
   chart_theme() +
-  theme(plot.margin = margin(5.5, 60, 5.5, 5.5))
+  theme(
+    legend.position = "none",
+    plot.margin = margin(5.5, 135, 5.5, 5.5)
+  )
+```
+
+## Average Consumption By Decile
+
+```{r decile-consumption-prep, include=FALSE}
+decile_levels <- c(
+  "0 - 10%", "11 - 20%", "21 - 30%", "31 - 40%", "41 - 50%",
+  "51 - 60%", "61 - 70%", "71 - 80%", "81 - 90%", "91 - 100%"
+)
+
+pip_percentiles <- read_csv(
+  file.path(project_root, "data", "raw", "worldbank_pip_percentiles_indonesia.csv"),
+  show_col_types = FALSE
+) %>%
+  filter(
+    country_code == "IDN",
+    reporting_level == "national"
+  )
+
+latest_available_consumption_year <- max(pip_percentiles$year, na.rm = TRUE)
+consumption_start_year <- 2020
+consumption_end_year <- min(latest_available_consumption_year, 2024)
+
+ppp_base_year <- 2017
+
+ppp_2017_conversion <- data$gdp %>%
+  filter(year == ppp_base_year) %>%
+  pull(ppp_private_consumption)
+
+cpi_2017 <- data$prices %>%
+  filter(year == ppp_base_year) %>%
+  pull(cpi_total)
+
+latest_cpi <- data$prices %>%
+  filter(year <= consumption_end_year, !is.na(cpi_total)) %>%
+  slice_max(year, n = 1, with_ties = FALSE)
+
+latest_cpi_year <- latest_cpi$year
+latest_price_conversion <- ppp_2017_conversion * latest_cpi$cpi_total / cpi_2017
+
+decile_consumption <- pip_percentiles %>%
+  filter(between(year, consumption_start_year, consumption_end_year)) %>%
+  mutate(
+    percentile = as.integer(percentile),
+    decile = case_when(
+      between(percentile, 1, 10) ~ "0 - 10%",
+      between(percentile, 11, 20) ~ "11 - 20%",
+      between(percentile, 21, 30) ~ "21 - 30%",
+      between(percentile, 31, 40) ~ "31 - 40%",
+      between(percentile, 41, 50) ~ "41 - 50%",
+      between(percentile, 51, 60) ~ "51 - 60%",
+      between(percentile, 61, 70) ~ "61 - 70%",
+      between(percentile, 71, 80) ~ "71 - 80%",
+      between(percentile, 81, 90) ~ "81 - 90%",
+      between(percentile, 91, 100) ~ "91 - 100%"
+    )
+  ) %>%
+  drop_na(decile, avg_welfare, pop_share) %>%
+  group_by(year, decile) %>%
+  summarise(
+    avg_consumption = weighted.mean(avg_welfare, pop_share),
+    .groups = "drop"
+  ) %>%
+  mutate(decile = factor(decile, levels = decile_levels)) %>%
+  arrange(decile, year)
+
+```
+
+```{r decile-consumption-long-horizon, include=FALSE}
+long_horizon_start_year <- 2000
+long_horizon_end_year <- min(latest_available_consumption_year, 2024)
+
+long_horizon_cpi <- data$prices %>%
+  filter(year <= long_horizon_end_year, !is.na(cpi_total)) %>%
+  slice_max(year, n = 1, with_ties = FALSE)
+
+long_horizon_cpi_year <- long_horizon_cpi$year
+long_horizon_price_conversion <- ppp_2017_conversion * long_horizon_cpi$cpi_total / cpi_2017
+
+decile_consumption_long <- pip_percentiles %>%
+  filter(between(year, long_horizon_start_year, long_horizon_end_year)) %>%
+  mutate(
+    percentile = as.integer(percentile),
+    decile = case_when(
+      between(percentile, 1, 10) ~ "0 - 10%",
+      between(percentile, 11, 20) ~ "11 - 20%",
+      between(percentile, 21, 30) ~ "21 - 30%",
+      between(percentile, 31, 40) ~ "31 - 40%",
+      between(percentile, 41, 50) ~ "41 - 50%",
+      between(percentile, 51, 60) ~ "51 - 60%",
+      between(percentile, 61, 70) ~ "61 - 70%",
+      between(percentile, 71, 80) ~ "71 - 80%",
+      between(percentile, 81, 90) ~ "81 - 90%",
+      between(percentile, 91, 100) ~ "91 - 100%"
+    )
+  ) %>%
+  drop_na(decile, avg_welfare, pop_share) %>%
+  group_by(year, decile) %>%
+  summarise(
+    avg_consumption = weighted.mean(avg_welfare, pop_share),
+    .groups = "drop"
+  ) %>%
+  mutate(decile = factor(decile, levels = decile_levels)) %>%
+  arrange(decile, year)
+```
+
+```{r decile-consumption-index-lines, fig.width=10, fig.height=6}
+cpi_index <- data$prices %>%
+  filter(between(year, long_horizon_start_year, long_horizon_end_year)) %>%
+  arrange(year) %>%
+  mutate(cpi_index_2000 = cpi_total / first(cpi_total) * 100) %>%
+  select(year, cpi_index_2000)
+
+decile_consumption_index <- decile_consumption_long %>%
+  group_by(decile) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(real_consumption_index_2000 = avg_consumption / first(avg_consumption) * 100) %>%
+  ungroup() %>%
+  left_join(cpi_index, by = "year") %>%
+  transmute(
+    year,
+    series = as.character(decile),
+    series_type = "Nominal decile consumption",
+    index_2000 = real_consumption_index_2000 * cpi_index_2000 / 100
+  )
+
+cpi_index_line <- cpi_index %>%
+  transmute(
+    year,
+    series = "Total CPI",
+    series_type = "Total CPI",
+    index_2000 = cpi_index_2000
+  )
+
+consumption_cpi_index_lines <- bind_rows(decile_consumption_index, cpi_index_line) %>%
+  mutate(
+    series = factor(series, levels = c(decile_levels, "Total CPI")),
+    series_type = factor(series_type, levels = c("Nominal decile consumption", "Total CPI"))
+  )
+
+index_line_palette <- c(
+  set_names(hcl.colors(length(decile_levels), palette = "Dark 3"), decile_levels),
+  "Total CPI" = palette[["red"]]
+)
+
+consumption_cpi_index_labels <- consumption_cpi_index_lines %>%
+  group_by(series) %>%
+  slice_max(year, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  arrange(index_2000) %>%
+  mutate(
+    label_x = long_horizon_end_year + 0.28,
+    label_y = case_when(
+      series == "0 - 10%" ~ 930,
+      series == "11 - 20%" ~ 960,
+      series == "21 - 30%" ~ 990,
+      series == "31 - 40%" ~ 1020,
+      series == "41 - 50%" ~ 1050,
+      series == "51 - 60%" ~ 1080,
+      series == "61 - 70%" ~ 1110,
+      series == "71 - 80%" ~ 1140,
+      series == "81 - 90%" ~ 1175,
+      series == "91 - 100%" ~ 1210,
+      TRUE ~ index_2000
+    ),
+    label = str_replace_all(as.character(series), " - ", "-")
+  )
+
+consumption_cpi_index_lines %>%
+  ggplot(aes(year, index_2000, color = series, linewidth = series_type, alpha = series_type, linetype = series_type)) +
+  geom_hline(yintercept = 100, color = palette[["gray"]], linetype = "dashed") +
+  geom_line() +
+  geom_text(
+    data = consumption_cpi_index_labels,
+    aes(x = label_x, y = label_y, label = label, color = series),
+    hjust = 0,
+    size = 2.8,
+    show.legend = FALSE
+  ) +
+  scale_x_continuous(
+    breaks = seq(2000, long_horizon_end_year, by = 4),
+    limits = c(long_horizon_start_year, long_horizon_end_year + 1.7),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  scale_y_continuous(labels = label_number(accuracy = 1)) +
+  scale_color_manual(values = index_line_palette) +
+  scale_linewidth_manual(values = c("Nominal decile consumption" = 0.75, "Total CPI" = 1.15)) +
+  scale_alpha_manual(values = c("Nominal decile consumption" = 0.82, "Total CPI" = 1)) +
+  scale_linetype_manual(values = c("Nominal decile consumption" = "dashed", "Total CPI" = "solid")) +
+  labs(
+    title = "Nominal Average Consumption by Decile Indexed to 2000",
+    subtitle = str_glue("PIP real consumption welfare converted to implied nominal indexes with total CPI; each series rebased to {long_horizon_start_year} = 100."),
+    x = "Year", y = str_glue("Nominal index, {long_horizon_start_year} = 100"), color = "Series"
+  ) +
+  coord_cartesian(clip = "off") +
+  chart_theme() +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(5.5, 78, 5.5, 5.5)
+  )
 ```
 
 ## Distribution Shares By Population Group
 
 ```{r distribution-shares, fig.width=10, fig.height=5.5}
+broad_groups <- c("Bottom 40%", "Middle 40%", "Top 20%")
+
 ineq_long <- data$welfare_distribution %>%
   filter(group %in% broad_groups) %>%
   mutate(
@@ -238,334 +446,7 @@ ineq_long %>%
   theme(plot.margin = margin(5.5, 70, 5.5, 5.5))
 ```
 
-## Tail Distribution Shares
-
-```{r tail-distribution-shares, fig.width=10, fig.height=5.5}
-tail <- data$welfare_distribution %>%
-  filter(group %in% c("Bottom 10%", "Top 10%")) %>%
-  mutate(group = factor(group, levels = c("Bottom 10%", "Top 10%")))
-
-tail_shares <- tail %>%
-  select(year, group, welfare_share) %>%
-  mutate(share = welfare_share * 100) %>%
-  drop_na(share)
-
-tail_share_labels <- tail_shares %>%
-  group_by(group) %>%
-  arrange(year, .by_group = TRUE) %>%
-  mutate(first_share = first(share)) %>%
-  slice_tail(n = 1) %>%
-  ungroup() %>%
-  mutate(
-    growth_pct = (share / first_share - 1) * 100,
-    growth_label = sprintf("%+.0f%%", growth_pct)
-  )
-
-tail_shares %>%
-  ggplot(aes(year, share, color = group)) +
-  geom_line(linewidth = 1.1) +
-  geom_point(size = 1.8) +
-  geom_text(
-    data = tail_share_labels,
-    aes(label = growth_label),
-    nudge_x = 0.7,
-    hjust = 0,
-    show.legend = FALSE
-  ) +
-  facet_wrap(~ group, scales = "free_y", ncol = 2) +
-  scale_color_manual(values = c(
-    "Bottom 10%" = palette[["green"]],
-    "Top 10%" = palette[["red"]]
-  )) +
-  scale_x_continuous(breaks = seq(2000, 2024, by = 5), limits = c(2000, 2028)) +
-  coord_cartesian(clip = "off") +
-  labs(
-    title = "Tail Distribution Shares",
-    subtitle = "End labels show growth from first available year to final year; World Bank PIP consumption shares",
-    x = "Year", y = "Share (%)", color = "Group"
-  ) +
-  chart_theme() +
-  theme(plot.margin = margin(5.5, 60, 5.5, 5.5))
-```
-
-## Inflation And CPI
-
-```{r inflation-cpi, fig.width=10, fig.height=5.5}
-inflation_long <- data$inflation %>%
-  select(year, cpi_total, inflation_yoy) %>%
-  pivot_longer(
-    cols = c(cpi_total, inflation_yoy),
-    names_to = "metric",
-    values_to = "value"
-  ) %>%
-  drop_na(value) %>%
-  mutate(metric = recode(
-    metric,
-    cpi_total = "CPI total index",
-    inflation_yoy = "Inflation YoY (%)"
-  ))
-
-inflation_long %>%
-  ggplot(aes(year, value, color = metric)) +
-  geom_line(linewidth = 1.1) +
-  geom_point(size = 1.8) +
-  facet_wrap(~ metric, scales = "free_y", ncol = 1) +
-  scale_color_manual(values = c(palette[["blue"]], palette[["red"]])) +
-  scale_x_continuous(breaks = seq(2000, 2024, by = 5)) +
-  labs(
-    title = "Inflation and CPI Coverage Available Now",
-    subtitle = "Total CPI and annual inflation from World Bank",
-    x = "Year", y = NULL, color = "Metric"
-  ) +
-  chart_theme()
-```
-
-## Nominal Wages, Prices, And Purchasing Power
-
-```{r wage-vs-cpi-index, fig.width=10, fig.height=5.5}
-wage_price_index <- data$labor %>%
-  select(year, avg_wage) %>%
-  left_join(data$inflation %>% select(year, cpi_total), by = "year") %>%
-  filter(year >= 2019) %>%
-  drop_na(avg_wage, cpi_total) %>%
-  mutate(real_wage = avg_wage / cpi_total * 100) %>%
-  mutate(
-    nominal_wage_index = avg_wage / first(avg_wage) * 100,
-    cpi_index = cpi_total / first(cpi_total) * 100,
-    real_wage_index = real_wage / first(real_wage) * 100
-  ) %>%
-  select(year, nominal_wage_index, cpi_index, real_wage_index) %>%
-  pivot_longer(
-    cols = ends_with("_index"),
-    names_to = "metric",
-    values_to = "index"
-  ) %>%
-  mutate(metric = recode(
-    metric,
-    nominal_wage_index = "Nominal wage",
-    cpi_index = "Consumer prices",
-    real_wage_index = "Real wage"
-  ))
-
-wage_price_index %>%
-  ggplot(aes(year, index, color = metric)) +
-  geom_hline(yintercept = 100, color = palette[["gray"]], linetype = "dashed") +
-  geom_line(linewidth = 1.1) +
-  geom_point(size = 1.8) +
-  scale_color_manual(values = c(
-    "Nominal wage" = palette[["blue"]],
-    "Consumer prices" = palette[["red"]],
-    "Real wage" = palette[["green"]]
-  )) +
-  scale_x_continuous(breaks = 2019:2024) +
-  labs(
-    title = "Nominal Wages, Prices, and Purchasing Power",
-    subtitle = "Indexed to 2019 = 100; real wage is nominal wage divided by CPI",
-    x = "Year", y = "Index, 2019 = 100", color = "Metric"
-  ) +
-  chart_theme()
-```
-
-## Household Price Pressure
-
-```{r household-price-pressure, fig.width=9, fig.height=6}
-household_analysis_start_year <- 2020
-household_analysis_end_year <- 2023
-
-category_cpi <- data$inflation %>%
-  select(year, cpi_food, cpi_transport, cpi_housing, cpi_education, cpi_healthcare, cpi_restaurant) %>%
-  pivot_longer(
-    cols = starts_with("cpi_"),
-    names_to = "category",
-    values_to = "index"
-  ) %>%
-  drop_na(index) %>%
-  filter(year >= household_analysis_start_year) %>%
-  mutate(category = recode(
-    category,
-    cpi_food = "Food, beverages, tobacco",
-    cpi_transport = "Transport",
-    cpi_housing = "Housing, water, electricity, fuel",
-    cpi_education = "Education",
-    cpi_healthcare = "Health",
-    cpi_restaurant = "Restaurants"
-  ))
-
-price_pressure <- bind_rows(
-  data$labor %>%
-    select(year, avg_wage) %>%
-    mutate(metric = "Average monthly earnings", value = avg_wage) %>%
-    select(year, metric, value),
-  data$inflation %>%
-    select(year, cpi_total) %>%
-    mutate(metric = "Total CPI", value = cpi_total) %>%
-    select(year, metric, value),
-  category_cpi %>%
-    transmute(year, metric = category, value = index)
-) %>%
-  filter(between(year, household_analysis_start_year, household_analysis_end_year)) %>%
-  drop_na(value) %>%
-  mutate(metric = factor(
-    metric,
-    levels = c(
-      "Average monthly earnings",
-      "Total CPI",
-      "Food, beverages, tobacco",
-      "Transport",
-      "Housing, water, electricity, fuel",
-      "Education",
-      "Health",
-      "Restaurants"
-    )
-  )) %>%
-  group_by(metric) %>%
-  arrange(year, .by_group = TRUE) %>%
-  mutate(
-    base_value = first(value),
-    index_start = value / base_value * 100,
-    emphasis = if_else(metric %in% c("Average monthly earnings","Total CPI"), "highlight", "muted"),
-    line_type = if_else(emphasis == "highlight", "solid", "dashed")
-  ) %>%
-  ungroup()
-
-price_pressure_growth <- price_pressure %>%
-  group_by(metric) %>%
-  arrange(year, .by_group = TRUE) %>%
-  summarise(
-    growth_pct = last(value) / first(value) - 1,
-    .groups = "drop"
-  )
-
-price_pressure_labels <- price_pressure %>%
-  group_by(metric) %>%
-  slice_max(year, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  left_join(price_pressure_growth, by = "metric") %>%
-  mutate(
-    label_x = household_analysis_end_year + 0.06,
-    label_y = case_when(
-      metric == "Transport" ~ 118.6,
-      metric == "Food, beverages, tobacco" ~ 115.8,
-      metric == "Total CPI" ~ 110.2,
-      metric == "Restaurants" ~ 109.2,
-      metric == "Average monthly earnings" ~ 108.1,
-      metric == "Health" ~ 106.6,
-      metric == "Education" ~ 105.7,
-      metric == "Housing, water, electricity, fuel" ~ 104.8,
-      TRUE ~ index_start
-    ),
-    label = str_glue("{metric}  {percent(growth_pct, accuracy = 0.1)}")
-  )
-
-price_pressure %>%
-  ggplot(aes(year, index_start, group = metric)) +
-  geom_hline(yintercept = 100, color = palette[["gray"]], linetype = "dashed") +
-  geom_line(aes(color = metric, linetype = line_type, alpha = emphasis), linewidth = 1.05) +
-  geom_point(aes(color = metric, alpha = emphasis), size = 1.8) +
-  geom_text(
-    data = price_pressure_labels,
-    aes(x = label_x, y = label_y, label = label, color = metric),
-    hjust = 0,
-    size = 2.9,
-    show.legend = FALSE
-  ) +
-  scale_x_continuous(
-    breaks = household_analysis_start_year:household_analysis_end_year,
-    limits = c(household_analysis_start_year, household_analysis_end_year + 0.85),
-    expand = expansion(mult = c(0.01, 0.01))
-  ) +
-  scale_color_manual(values = c(
-    "Average monthly earnings" = palette[["blue"]],
-    "Total CPI" = palette[["red"]],
-    "Food, beverages, tobacco" = palette[["green"]],
-    "Transport" = palette[["gold"]],
-    "Housing, water, electricity, fuel" = palette[["purple"]],
-    "Education" = "#8A8F98",
-    "Health" = "#A0A6AF",
-    "Restaurants" = "#747B86"
-  )) +
-  scale_linetype_manual(values = c(solid = "solid", dashed = "dashed")) +
-  scale_alpha_manual(values = c(highlight = 1, muted = 0.55)) +
-  scale_y_continuous(
-    breaks = seq(95, 125, by = 5),
-    limits = c(95, 125)
-  ) +
-  labs(
-    title = "How Prices Move From a Household Starting Point",
-    subtitle = str_glue("Each series rebased to its first available value in {household_analysis_start_year}; shown through {household_analysis_end_year}."),
-    x = "Year", y = "Index, first available = 100", color = "Series"
-  ) +
-  coord_cartesian(clip = "off") +
-  chart_theme() +
-  theme(
-    legend.position = "none",
-    plot.margin = margin(5.5, 95, 5.5, 5.5)
-  )
-```
-
-## Average Consumption By Decile
-
 ```{r lower-income-welfare-price-pressure, fig.width=9, fig.height=5}
-decile_levels <- c(
-  "0 - 10%", "11 - 20%", "21 - 30%", "31 - 40%", "41 - 50%",
-  "51 - 60%", "61 - 70%", "71 - 80%", "81 - 90%", "91 - 100%"
-)
-
-pip_percentiles <- read_csv(
-  file.path(project_root, "data", "raw", "worldbank_pip_percentiles_indonesia.csv"),
-  show_col_types = FALSE
-) %>%
-  filter(
-    country_code == "IDN",
-    reporting_level == "national"
-  )
-
-latest_available_consumption_year <- max(pip_percentiles$year, na.rm = TRUE)
-consumption_end_year <- min(latest_available_consumption_year, household_analysis_end_year)
-
-ppp_base_year <- 2017
-
-ppp_2017_conversion <- data$gdp %>%
-  filter(year == ppp_base_year) %>%
-  pull(ppp_private_consumption)
-
-cpi_2017 <- data$inflation %>%
-  filter(year == ppp_base_year) %>%
-  pull(cpi_total)
-
-latest_cpi <- data$inflation %>%
-  filter(year <= consumption_end_year, !is.na(cpi_total)) %>%
-  slice_max(year, n = 1, with_ties = FALSE)
-
-latest_cpi_year <- latest_cpi$year
-latest_price_conversion <- ppp_2017_conversion * latest_cpi$cpi_total / cpi_2017
-
-decile_consumption <- pip_percentiles %>%
-  filter(between(year, household_analysis_start_year, consumption_end_year)) %>%
-  mutate(
-    percentile = as.integer(percentile),
-    decile = case_when(
-      between(percentile, 1, 10) ~ "0 - 10%",
-      between(percentile, 11, 20) ~ "11 - 20%",
-      between(percentile, 21, 30) ~ "21 - 30%",
-      between(percentile, 31, 40) ~ "31 - 40%",
-      between(percentile, 41, 50) ~ "41 - 50%",
-      between(percentile, 51, 60) ~ "51 - 60%",
-      between(percentile, 61, 70) ~ "61 - 70%",
-      between(percentile, 71, 80) ~ "71 - 80%",
-      between(percentile, 81, 90) ~ "81 - 90%",
-      between(percentile, 91, 100) ~ "91 - 100%"
-    )
-  ) %>%
-  drop_na(decile, avg_welfare, pop_share) %>%
-  group_by(year, decile) %>%
-  summarise(
-    avg_consumption = weighted.mean(avg_welfare, pop_share),
-    .groups = "drop"
-  ) %>%
-  mutate(decile = factor(decile, levels = decile_levels)) %>%
-  arrange(decile, year)
-
 decile_consumption %>%
   group_by(decile) %>%
   arrange(year, .by_group = TRUE) %>%
@@ -593,7 +474,7 @@ decile_consumption %>%
   ) +
   labs(
     title = "Average Consumption Growth by Decile",
-    subtitle = str_glue("Bar height shows {household_analysis_start_year}-{consumption_end_year} growth in PIP's constant 2017 PPP consumption welfare."),
+    subtitle = str_glue("Bar height shows {consumption_start_year}-{consumption_end_year} growth in PIP's constant 2017 PPP consumption welfare."),
     x = "Population decile", y = "Consumption growth",
     caption = str_glue("Labels show latest consumption translated to rupiah/day in {latest_cpi_year} prices: 2017 PPP welfare x 2017 private-consumption PPP x CPI growth since 2017.")
   ) +
@@ -604,10 +485,237 @@ decile_consumption %>%
   )
 ```
 
+## Household Price Pressure
+
+```{r household-price-pressure, fig.width=9, fig.height=6}
+household_analysis_start_year <- 2020
+household_analysis_end_year <- 2023
+
+category_cpi <- data$prices %>%
+  select(year, cpi_food, cpi_transport, cpi_housing, cpi_education, cpi_healthcare, cpi_restaurant) %>%
+  pivot_longer(
+    cols = starts_with("cpi_"),
+    names_to = "category",
+    values_to = "index"
+  ) %>%
+  drop_na(index) %>%
+  filter(year >= household_analysis_start_year) %>%
+  mutate(category = recode(
+    category,
+    cpi_food = "Food, beverages, tobacco",
+    cpi_transport = "Transport",
+    cpi_housing = "Housing, water, electricity, fuel",
+    cpi_education = "Education",
+    cpi_healthcare = "Health",
+    cpi_restaurant = "Restaurants"
+  ))
+
+middle_consumption_pressure <- data$welfare_distribution %>%
+  filter(
+    group == "Middle 40%",
+    between(year, household_analysis_start_year, household_analysis_end_year)
+  ) %>%
+  select(year, avg_welfare_ppp_daily) %>%
+  left_join(data$prices %>% select(year, cpi_total), by = "year") %>%
+  arrange(year) %>%
+  drop_na(avg_welfare_ppp_daily, cpi_total) %>%
+  mutate(
+    real_consumption_index = avg_welfare_ppp_daily / first(avg_welfare_ppp_daily) * 100,
+    cpi_index = cpi_total / first(cpi_total) * 100,
+    metric = "Middle 40% average consumption",
+    value = real_consumption_index * cpi_index / 100
+  ) %>%
+  select(year, metric, value)
+
+price_pressure <- bind_rows(
+  middle_consumption_pressure,
+  category_cpi %>%
+    transmute(year, metric = category, value = index)
+) %>%
+  filter(between(year, household_analysis_start_year, household_analysis_end_year)) %>%
+  drop_na(value) %>%
+  mutate(metric = factor(
+    metric,
+    levels = c(
+      "Middle 40% average consumption",
+      "Food, beverages, tobacco",
+      "Transport",
+      "Housing, water, electricity, fuel",
+      "Education",
+      "Health",
+      "Restaurants"
+    )
+  )) %>%
+  group_by(metric) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(
+    base_value = first(value),
+    index_start = value / base_value * 100,
+    emphasis = if_else(metric == "Middle 40% average consumption", "highlight", "muted"),
+    line_type = if_else(emphasis == "highlight", "solid", "dashed")
+  ) %>%
+  ungroup()
+
+price_pressure_growth <- price_pressure %>%
+  group_by(metric) %>%
+  arrange(year, .by_group = TRUE) %>%
+  summarise(
+    growth_pct = last(value) / first(value) - 1,
+    .groups = "drop"
+  )
+
+price_pressure_labels <- price_pressure %>%
+  group_by(metric) %>%
+  slice_max(year, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  left_join(price_pressure_growth, by = "metric") %>%
+  mutate(
+    label_x = household_analysis_end_year + 0.06,
+    label_y = case_when(
+      metric == "Transport" ~ 118.6,
+      metric == "Food, beverages, tobacco" ~ 115.8,
+      metric == "Restaurants" ~ 109.2,
+      metric == "Middle 40% average consumption" ~ 108.1,
+      metric == "Health" ~ 106.6,
+      metric == "Education" ~ 105.7,
+      metric == "Housing, water, electricity, fuel" ~ 104.8,
+      TRUE ~ index_start
+    ),
+    label = str_glue("{metric}  {percent(growth_pct, accuracy = 0.1)}")
+  )
+
+price_pressure %>%
+  ggplot(aes(year, index_start, group = metric)) +
+  geom_hline(yintercept = 100, color = palette[["gray"]], linetype = "dashed") +
+  geom_line(aes(color = metric, linetype = line_type, alpha = emphasis), linewidth = 1.05) +
+  geom_point(aes(color = metric, alpha = emphasis), size = 1.8) +
+  geom_text(
+    data = price_pressure_labels,
+    aes(x = label_x, y = label_y, label = label, color = metric),
+    hjust = 0,
+    size = 2.9,
+    show.legend = FALSE
+  ) +
+  scale_x_continuous(
+    breaks = household_analysis_start_year:household_analysis_end_year,
+    limits = c(household_analysis_start_year, household_analysis_end_year + 0.85),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  scale_color_manual(values = c(
+    "Middle 40% average consumption" = palette[["blue"]],
+    "Food, beverages, tobacco" = palette[["green"]],
+    "Transport" = palette[["gold"]],
+    "Housing, water, electricity, fuel" = palette[["purple"]],
+    "Education" = "#8A8F98",
+    "Health" = "#A0A6AF",
+    "Restaurants" = "#747B86"
+  )) +
+  scale_linetype_manual(values = c(solid = "solid", dashed = "dashed")) +
+  scale_alpha_manual(values = c(highlight = 1, muted = 0.55)) +
+  scale_y_continuous(
+    breaks = seq(95, 125, by = 5),
+    limits = c(95, 125)
+  ) +
+  labs(
+    title = "How Prices Move From a Household Starting Point",
+    subtitle = str_glue("Middle 40% consumption is an implied nominal index; each series rebased to {household_analysis_start_year} = 100 and shown through {household_analysis_end_year}."),
+    x = "Year", y = "Index, first available = 100", color = "Series"
+  ) +
+  coord_cartesian(clip = "off") +
+  chart_theme() +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(5.5, 95, 5.5, 5.5)
+  )
+```
+
+## Estimated Labour Income Deciles
+
+```{r labour-income-deciles-vs-national-wage, fig.width=10, fig.height=6}
+labour_income_decile_levels <- c(
+  "0 - 10%", "11 - 20%", "21 - 30%", "31 - 40%", "41 - 50%",
+  "51 - 60%", "61 - 70%", "71 - 80%", "81 - 90%", "91 - 100%"
+)
+
+labour_income_deciles <- data$labour_income_deciles %>%
+  mutate(decile = factor(decile, levels = labour_income_decile_levels)) %>%
+  drop_na(estimated_avg_monthly_labour_income)
+
+national_wage_comparison <- data$labor %>%
+  select(year, avg_wage) %>%
+  inner_join(
+    labour_income_deciles %>%
+      distinct(year),
+    by = "year"
+  ) %>%
+  drop_na(avg_wage)
+
+labour_income_decile_labels <- labour_income_deciles %>%
+  group_by(decile) %>%
+  slice_max(year, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(
+    label_x = year + 0.35,
+    label_y = estimated_avg_monthly_labour_income,
+    label = as.character(decile)
+  )
+
+national_wage_label <- national_wage_comparison %>%
+  slice_max(year, n = 1, with_ties = FALSE) %>%
+  mutate(
+    label_x = year + 0.35,
+    label_y = avg_wage * 0.9,
+    label = "National average wage"
+  )
+
+labour_income_deciles %>%
+  ggplot(aes(year, estimated_avg_monthly_labour_income, color = decile)) +
+  geom_line(linewidth = 0.85, alpha = 0.86) +
+  geom_line(
+    data = national_wage_comparison,
+    aes(year, avg_wage),
+    inherit.aes = FALSE,
+    color = palette[["dark"]],
+    linewidth = 1.15
+  ) +
+  geom_text(
+    data = labour_income_decile_labels,
+    aes(x = label_x, y = label_y, label = label, color = decile),
+    hjust = 0,
+    size = 2.8,
+    show.legend = FALSE
+  ) +
+  geom_text(
+    data = national_wage_label,
+    aes(x = label_x, y = label_y, label = label),
+    inherit.aes = FALSE,
+    hjust = 0,
+    size = 3,
+    color = palette[["dark"]]
+  ) +
+  scale_color_manual(values = set_names(hcl.colors(length(labour_income_decile_levels), palette = "Dark 3"), labour_income_decile_levels)) +
+  scale_y_log10(labels = label_number(scale_cut = cut_short_scale(), prefix = "Rp ")) +
+  scale_x_continuous(
+    breaks = seq(min(labour_income_deciles$year), max(labour_income_deciles$year), by = 3),
+    limits = c(min(labour_income_deciles$year), max(labour_income_deciles$year) + 2.9),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Estimated Labour Income by Decile vs National Average Wage",
+    subtitle = "ILOSTAT labour-income shares by decile scaled by national average monthly earnings; log scale for readability.",
+    x = "Year", y = "Monthly rupiah, log scale", color = "Decile"
+  ) +
+  coord_cartesian(clip = "off") +
+  chart_theme() +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(5.5, 135, 5.5, 5.5)
+  )
+```
+
 ## Next EDA Tasks
 
 - Validate ILOSTAT average monthly earnings against BPS/Sakernas wage tables if a cleaner national API series is confirmed.
 - Extend CPI category history before 2020 and bridge the 2024 BPS 2022=100 base only if the bridge is source-backed.
 - Extend cost-of-living charts beyond wholesale rice once fuel/electricity/LPG/rent source IDs are mapped.
 - Replace provisional distribution shares with BPS/SUSENAS expenditure-only distribution if available.
-- Add informal employment charts once BPS or ILOSTAT source series are confirmed.

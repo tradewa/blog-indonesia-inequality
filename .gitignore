@@ -8,6 +8,10 @@ agent.md
 
 # Generated data artifacts. Rebuild locally with scripts/download_all.py.
 data/
+eda_indonesia_inequality_appendix_files/
+eda_indonesia_inequality_appendix_files.html
+eda_indonesia_inequality_appendix.qmd
+eda_indonesia_inequality_files/
 
 # Local R/renv files. Keep these on the machine, not in Git.
 renv/
